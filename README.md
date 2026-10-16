@@ -5,8 +5,9 @@ its overlays. It publishes, delivers, and retires *published overlays*: versione
 layers that change a shipped game's data without a client patch, applied at a boundary
 the game chooses, rolled back in one call, and promoted into source once they stick.
 
-It follows plan D of baker-dev's `dev/integration-plans.md` (the refined plan), on Baker's
-layer check (`Config::check_layer_text`, `LayerPolicy`, `LayerOptions::policy`, D161).
+It follows plan D of baker-dev's `dev/integration-plans.md` (the refined plan) and the
+convention in Baker's cookbook, "Published overlays" (D162), on Baker's layer check
+(`Config::check_layer_text`, `LayerPolicy`, `LayerOptions::policy`, D161).
 
 | Directory | What |
 |---|---|
@@ -140,8 +141,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at baker-dev's main commit `75e1728`, which has the layer
-check, until a release of `zach/baker` has it. To build offline, pass
+Baker is fetched with FetchContent at baker-dev's main commit `0c61a64`, which has the layer
+check and the cookbook's "Published overlays", until a release of `zach/baker` has it. To build offline, pass
 `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker-dev`. In a shipping build, the client and its
 tests build, but the publisher does not, because `retire` needs a development build.
 

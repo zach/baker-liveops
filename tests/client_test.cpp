@@ -19,14 +19,15 @@ struct Host {
     bl::Client client;
 
     Host(const fs::path& cdn, const fs::path& user, std::span<const bl::PublicKey> keys,
-         bl::ApplyMode mode = bl::ApplyMode::Path, const char* description = "tests/game/liveops.dta")
+         bl::ApplyMode mode = bl::ApplyMode::Path, const char* description = "tests/game/liveops.dta",
+         bl::Recheck recheck = bl::Recheck::Always)
         : game(load(description)),
           policies(game.named()),
           transport(cdn),
           store(user),
           client(cfg, {.environment = "prod", .keys = keys, .policies = policies,
                        .transport = &transport, .store = &store, .mode = mode,
-                       .log = [this](std::string_view l) { log.emplace_back(l); }}) {
+                       .recheck = recheck, .log = [this](std::string_view l) { log.emplace_back(l); }}) {
         if (mode == bl::ApplyMode::Path) client.attach(cfg.session());
         std::string error;
         if (!bl::load_base(cfg, game, source_dir() / "tests/game", error)) std::printf("%s\n", error.c_str());
@@ -296,9 +297,27 @@ void last_good(bl::ApplyMode mode) {
     }
 }
 
+// With Recheck::IfStackChanged, an overlay staged against the stack as it is applies
+// without a second check; one staged before the stack changed is checked again.
+void recheck_once() {
+    const fs::path dir = scratch("once");
+    FakePublisher pub(dir / "cdn");
+    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1), bl::ApplyMode::Path,
+              "tests/game/liveops.dta", bl::Recheck::IfStackChanged);
+    pub.publish({kBalance});
+    CHECK(host.client.refresh() && host.client.apply());
+    CHECK(host.get<int64_t>("economy.gold_per_win") == 120);
+    // Staged together: the second is pushed onto a stack the first changed, so it is
+    // checked again, and passes.
+    pub.publish({kBalance, kDoubleXp});
+    CHECK(host.client.refresh() && host.client.apply());
+    CHECK(host.client.live().size() == 2 && host.get<double>("events.xp_multiplier") == 2);
+}
+
 }  // namespace
 
 int main() {
+    recheck_once();
     for (bl::ApplyMode mode : {bl::ApplyMode::Path, bl::ApplyMode::Tree}) {
         applies_at_boundary(mode);
         refusals(mode);

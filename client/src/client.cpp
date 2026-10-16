@@ -115,7 +115,7 @@ std::optional<std::vector<Client::Overlay>> Client::stage(std::string_view text,
             continue;
         }
         note("staged " + e.name + " " + e.version);
-        out.push_back(Overlay{e, std::move(*body), std::move(*report), {}, {}});
+        out.push_back(Overlay{e, std::move(*body), std::move(*report), cfg_.epoch(), {}, {}});
     }
     return out;
 }
@@ -157,22 +157,23 @@ bool Client::pending() const {
 }
 
 bool Client::push(Overlay& o) {
-    const baker::LayerPolicy& p = *policy(o.entry.policy);
+    const bool checked = opt_.recheck == Recheck::IfStackChanged && o.epoch == cfg_.epoch();
+    const baker::LayerPolicy* p = checked ? nullptr : policy(o.entry.policy);
     const std::string file = path(o.entry.name);
     const baker::LoadSession* read = &cfg_.read_session();
     baker::LoadSession session = cfg_.read_session();
     baker::Expected<void> r;
     if (opt_.mode == ApplyMode::Path) {
-        r = cfg_.push_layer(o.entry.name, file, {.policy = &p});
+        r = cfg_.push_layer(o.entry.name, file, {.policy = p});
     } else {
         session.text_only = true;
         session.clear_autorun();
         session.clear_warnings();
         auto tree = baker::read_string(o.text, file, session);
         if (!tree) r = baker::Unexpected(std::move(tree).error());
-        else if (p.warnings_refuse && !session.warnings().empty())
+        else if (p && p->warnings_refuse && !session.warnings().empty())
             r = baker::Unexpected(session.warnings()[0]);
-        else r = cfg_.push_layer(o.entry.name, *tree, {.policy = &p});
+        else r = cfg_.push_layer(o.entry.name, *tree, {.policy = p});
         read = &session;
     }
     if (!r) return note("refused " + o.entry.name + ": " + std::string(baker::to_string(r.error()))), false;

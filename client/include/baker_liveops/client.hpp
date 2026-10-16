@@ -67,6 +67,16 @@ enum class ApplyMode {
     Tree,
 };
 
+// Whether apply() checks an overlay again as it pushes it.
+enum class Recheck {
+    // push_layer under the policy, always: the check runs at staging and again at apply.
+    Always,
+    // Under the policy only if the stack changed since the overlay was staged (another
+    // epoch); otherwise the staging check stands, and apply() costs the push alone. Baker
+    // has no way yet to push a layer it has already checked (requirements/0002).
+    IfStackChanged,
+};
+
 struct ClientOptions {
     std::string environment;
     std::span<const PublicKey> keys;
@@ -74,6 +84,7 @@ struct ClientOptions {
     Transport* transport = nullptr;
     Store* store = nullptr;
     ApplyMode mode = ApplyMode::Path;
+    Recheck recheck = Recheck::Always;
     std::string prefix = "liveops/";      // overlays' file names: prefix + name + ".dta"
     uint64_t max_overlay_bytes = 4 << 20;
     std::function<void(std::string_view)> log;  // one line per event; default: none
@@ -123,6 +134,7 @@ private:
         Entry entry;
         std::string text;
         baker::LayerReport report;
+        uint64_t epoch = 0;        // the Config's when it was checked
         std::string origin, tool;  // filled when it goes live
     };
 

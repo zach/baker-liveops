@@ -9,7 +9,7 @@ permissions:
 
 env:
   # The Baker this integration builds on (CMakeLists.txt pins the same commit).
-  BAKER_COMMIT: 0c61a64f0fda32c6f2b940a3a14b8952871edd7b
+  BAKER_COMMIT: 3ce0424f9a0a5e996f0bd05dee75009298b969c6
 
 jobs:
   # The client, the publisher and their tests, without the network, in development and

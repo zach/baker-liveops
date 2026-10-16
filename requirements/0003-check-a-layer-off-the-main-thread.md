@@ -1,5 +1,9 @@
 # 0003: Check a candidate layer off the thread that owns the Config
 
+**Status:** built in Baker at baker-dev `3ce0424`: `Config::checker()` and
+`ValidatorOptions::any_thread` (D166, D167). The client uses it; the workaround described
+under *Today* is gone.
+
 ## The need
 
 A host needs to check a candidate layer (`check_layer`, `check_layer_text`) on a worker

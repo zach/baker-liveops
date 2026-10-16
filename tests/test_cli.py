@@ -64,7 +64,7 @@ class Flow(unittest.TestCase):
         self.assertEqual(h.returncode, 0, h.stdout + h.stderr)
         self.assertIn("live balance_2026_10 3 origin=ops/balance_2026_10.dta", h.stdout)
         self.assertIn("live double_xp 1 origin=ops/double_xp.dta", h.stdout)
-        self.assertIn("value economy.gold_per_win = (gold_per_win 120) (layer balance_2026_10", h.stdout)
+        self.assertIn("value economy.gold_per_win = (gold_per_win 120) (layer liveops/balance_2026_10@3.dta", h.stdout)
         self.assertIn("liveops/balance_2026_10@3.dta:5, origin ops/balance_2026_10.dta", h.stdout)
 
         r = run(TOOL, "show", "--backend", self.backend, "--env", self.env, "--trust", self.pub)
@@ -78,7 +78,7 @@ class Flow(unittest.TestCase):
         self.assertIn("value events.banner = (none)", h.stdout)
 
         # Offline, the next start takes the last good set from the store.
-        h = self.host("--offline", "--get", "economy.gold_per_win", "--mode", "tree")
+        h = self.host("--offline", "--get", "economy.gold_per_win")
         self.assertIn("live balance_2026_10 3", h.stdout)
         self.assertIn("(gold_per_win 120)", h.stdout)
 

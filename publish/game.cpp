@@ -71,7 +71,7 @@ bool load_base(baker::Config& cfg, const Game& game, const std::filesystem::path
     for (const std::string& l : game.pack_levels) levels.emplace_back(l);
     if (!levels.empty()) cfg.session().set_pack_levels(levels);
     for (const std::string& d : game.include_dirs) cfg.session().add_include_dir((base / d).string());
-    if (game.shapes) cfg.add_validator(baker::shape::validator(cfg));
+    if (game.shapes) cfg.add_validator(baker::shape::validator(), {.any_thread = true});
     for (const auto& [name, file] : game.layers)
         if (auto r = cfg.push_layer(name, (base / file).string()); !r)
             return error = std::string(baker::to_string(r.error())), false;

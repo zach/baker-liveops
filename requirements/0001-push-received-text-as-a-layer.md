@@ -1,5 +1,9 @@
 # 0001: Push text a host received as a file layer, read as text only
 
+**Status:** built in Baker at baker-dev `3ce0424`: `Config::push_layer_text`;
+`check_layer_text` reads the same way (D163). The client uses it; the workaround described
+under *Today* is gone.
+
 ## The need
 
 A host that receives a layer's text from outside the game (over the network, from a

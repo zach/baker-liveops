@@ -17,7 +17,7 @@ set(BAKER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BAKER_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(baker
   GIT_REPOSITORY https://github.com/zach/baker-dev.git
-  GIT_TAG 0c61a64f0fda32c6f2b940a3a14b8952871edd7b)
+  GIT_TAG 3ce0424f9a0a5e996f0bd05dee75009298b969c6)
 FetchContent_MakeAvailable(baker)
 
 include(cmake/sodium.cmake)

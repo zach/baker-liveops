@@ -54,7 +54,6 @@ as a replay (`client/include/baker_liveops/manifest.hpp`).
 ```cpp
 baker_liveops::Client live(cfg, {.environment = "prod", .keys = trusted, .policies = policies,
                                  .transport = &cdn, .store = &user_storage});
-live.attach(cfg.session());           // before the base loads
 cfg.push_layer("default", "data/default.dta");
 cfg.freeze();                          // ConfigOptions::live_layers = true
 live.restore();                        // the last good overlays, verified and checked again
@@ -63,7 +62,7 @@ live.apply();                          // the first session starts with them
 live.refresh();                        // when the host polls: fetch, verify, stage
 if (live.pending()) live.apply();      // at a session start or in a lobby, never mid-match
 live.rollback("balance_2026_10");      // stays off, here and after a restart
-for (auto& o : live.live()) log(o.layer, o.version, o.origin);
+for (auto& o : live.live()) log(o.name, o.version, o.origin);
 ```
 
 - **Transport** is the host's: an interface with `fetch_manifest` and `fetch_overlay`. The
@@ -71,16 +70,18 @@ for (auto& o : live.live()) log(o.layer, o.version, o.origin);
   RPC. Dedicated servers use the same client and manifest.
 - **Verify, before Baker sees a byte:** the manifest's signature with a key the game trusts,
   its environment and sequence, then each overlay's size and SHA-256.
-- **Stage:** `check_layer_text` under the policy the manifest names. Nothing changes.
+- **Stage:** Baker checks the verified text under the policy the manifest names, as received
+  text (never a cache, no `#include`), changing nothing. To keep that off the frame, split
+  `refresh()`: `begin_refresh()` on the Config's thread takes a `LayerChecker`, `run()` on
+  any thread fetches, verifies and checks, and `finish_refresh()` on the Config's thread
+  stages. Validators added with `{.any_thread = true}` run in the check; the push runs the
+  rest.
 - **Apply:** only when the host calls `apply()`. It removes what the new set drops or
-  replaces and pushes the rest under the same policy. Baker refuses what fails, changing
-  nothing.
-  - `ApplyMode::Path` (the default) pushes a file layer through a reader that serves the
-    verified text by name (`liveops/NAME@VERSION.dta`). The pack's `requires` and the
-    origin are read with it, so `source()` names the layer, its version (in the file name),
-    and its origin. It needs a Config without `cache_dir` (requirements/0001).
-  - `ApplyMode::Tree` reads the text as text only and pushes the tree: for a Config that
-    loads through caches. `source()` names the layer and the file, without the origin.
+  replaces, and pushes the rest with `push_layer_text` under the same policy and the staged
+  report (`.checked`). If the Config has not changed since the check, Baker takes the
+  report's verdict; otherwise it checks again and refuses what fails, changing nothing.
+  - Each overlay's layer is `liveops/NAME@VERSION.dta`, so `source()` names the overlay and
+    its version, and the pack's `requires` and its `(origin ...)` are read with it.
 - **Keep the last good:** after each apply, the set and its texts go to the `Store`. At start,
   `restore()` verifies and checks them again. One that no longer passes is dropped, and the
   game starts on the base without it.
@@ -141,8 +142,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at baker-dev's main commit `0c61a64`, which has the layer
-check and the cookbook's "Published overlays", until a release of `zach/baker` has it. To build offline, pass
+Baker is fetched with FetchContent at baker-dev's main commit `3ce0424`, which has the layer
+check, the cookbook's "Published overlays", and received layers (D163–D167), until a release of `zach/baker` has it. To build offline, pass
 `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker-dev`. In a shipping build, the client and its
 tests build, but the publisher does not, because `retire` needs a development build.
 
@@ -156,22 +157,20 @@ each run. Optional runs:
 
 `tests/bench.cpp` measures a 10 KB overlay that changes 256 values of a 2,000-item keyed table,
 under a policy with every rule on. The numbers are medians of 500 runs in a shipping build, on
-4 vCPUs of a 2.8 GHz Xeon, with GCC 13. All of it is main-thread time.
+4 vCPUs of a 2.8 GHz Xeon, with GCC 13, at Baker `3ce0424`.
 
-| | verify | stage (check) | apply, `Recheck::Always` | apply, `Recheck::IfStackChanged` |
+| | verify | check (any thread) | apply, report holds | apply, stack moved |
 |---|---|---|---|---|
-| no validators | 0.11 ms | 1.14 ms | **1.29 ms** | **0.29 ms** |
-| `shape::validator` | 0.11 ms | 1.43 ms | **1.87 ms** | **0.59 ms** |
+| no validators | 0.08 ms | 0.48 ms | **0.18 ms** | **0.51 ms** |
+| `shape::validator` | 0.08 ms | 0.58 ms | **0.34 ms** | **0.88 ms** (p90 1.2 ms) |
 
-- **The default misses the target.** Applying under 1 ms is not met by default. `apply()`
-  pushes under the policy, as the plan asks, and Baker's policy check is about 1.4 ms of the
-  push's 1.3–1.9 ms. The merge and rebind alone take 0.14 ms (0.45 ms with shapes).
-- **The opt-in meets it.** `Recheck::IfStackChanged` skips the second check when the stack
-  is the one the overlay was checked against: 0.3–0.6 ms. Requirement 0002 asks Baker to
-  make that safe by construction.
-- **Staging also lands on the main thread**, on the frame the overlay arrives, because the
-  check needs the Config (requirement 0003).
-- **Baker's own number** for the check alone was about 0.85 ms on a 2,000-item table.
+- **Apply is the main thread's cost at the boundary**, and it is under 1 ms at the median in
+  every case. When the stack has not moved since staging, the push takes the staged
+  verdict. When it has, Baker checks again.
+- **The check runs on the worker.** Verifying and checking take about 0.6 ms off the main
+  thread. Taking the checker and staging take under 0.01 ms on it.
+- **Before Baker's received-layer work** (`75e1728`), the check alone was 1.1–1.4 ms on the
+  main thread. Applying under the policy was 1.3–1.9 ms, because it checked again.
 
 ## Requirements for Baker
 
@@ -179,9 +178,12 @@ When this integration needs something Baker lacks, write it down in `requirement
 `requirements/0000-template.md`, in Baker's own terms. Only the text of a requirement goes
 to Baker.
 
-- `0001` Push text a host received as a file layer, read as text only, with its pack and origin.
-- `0002` Apply a layer that was checked, without checking it again.
-- `0003` Check a candidate layer off the thread that owns the Config.
+All three are built in Baker (baker-dev `3ce0424`, D163–D167), and the client uses them:
+
+- `0001` Push text a host received as a file layer, read as text only, with its pack and
+  origin: `Config::push_layer_text`.
+- `0002` Apply a layer that was checked, without checking it again: `LayerOptions::checked`.
+- `0003` Check a candidate layer off the thread that owns the Config: `Config::checker()`.
 
 ## License
 

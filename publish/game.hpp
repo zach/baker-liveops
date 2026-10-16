@@ -50,8 +50,7 @@ struct Game {
 
 [[nodiscard]] std::optional<Game> load_game(const std::filesystem::path& file, std::string& error);
 
-// Sets up `cfg` as the game does and pushes its layers from `base`. A client's attach()
-// comes before this.
+// Sets up `cfg` as the game does and pushes its layers from `base`.
 [[nodiscard]] bool load_base(baker::Config& cfg, const Game& game, const std::filesystem::path& base,
                              std::string& error);
 

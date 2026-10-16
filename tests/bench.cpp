@@ -1,6 +1,8 @@
-// How long the main thread spends taking an overlay: verifying it, staging it
-// (check_layer_text) and applying it (push_layer under the policy), for a 10 KB overlay over
-// a 2,000-item table, as Baker measured its check (D161). Medians of many runs.
+// How long taking an overlay costs, and where: verifying it and checking it (which may run
+// on any thread, against a LayerChecker), staging it, and applying it at the boundary
+// (push_layer_text under the policy, with the staged report: "held" when the stack has not
+// moved since the check, "moved" when it has and Baker checks again). A 10 KB overlay over a
+// 2,000-item table, as Baker measured its check (D161). Medians of many runs, in ms.
 //
 //   liveops_bench [runs]
 #include "support.hpp"
@@ -81,21 +83,19 @@ int main(int argc, char** argv) {
     std::string seed;
     const bl::SecretKey key = bl::generate_key(seed);
 
-    for (bl::Recheck recheck : {bl::Recheck::Always, bl::Recheck::IfStackChanged})
-    for (bool shapes : {false, true})
-        for (bl::ApplyMode mode : {bl::ApplyMode::Path, bl::ApplyMode::Tree}) {
+    const auto nudge = baker::read_string("(items (item_1999 (stack 2)))", "nudge.dta");
+    for (bool moved : {false, true})
+        for (bool shapes : {false, true}) {
             baker::Config cfg({.live_layers = true, .tweaks = nullptr});
             MemoryTransport transport;
             bl::Client client(cfg, {.environment = "prod", .keys = std::span(&key.pub, 1),
-                                    .policies = policies, .transport = &transport, .mode = mode,
-                                    .recheck = recheck});
-            if (mode == bl::ApplyMode::Path) client.attach(cfg.session());
+                                    .policies = policies, .transport = &transport});
             cfg.session().set_pack_levels({"game", "live"});
-            if (shapes) cfg.add_validator(baker::shape::validator(cfg));
+            if (shapes) cfg.add_validator(baker::shape::validator(), {.any_thread = true});
             if (!cfg.push_layer("default", (dir / "default.dta").string())) return 2;
             cfg.freeze();
 
-            Stats verify, stage, apply, remove;
+            Stats verify, begin, check, finish, apply, remove;
             uint64_t sequence = 0;
             size_t size = 0;
             for (int r = 0; r < runs; ++r) {
@@ -120,10 +120,19 @@ int main(int argc, char** argv) {
                 verify.add(ms(Clock::now() - t0));
                 if (!ok) return std::printf("verify: %s\n", error.c_str()), 2;
 
-                // refresh() is verification plus the check; the check is what remains.
+                // The refresh's three parts: the middle one may run on any thread.
                 t0 = Clock::now();
-                if (!client.refresh()) return std::printf("refresh refused\n"), 2;
-                stage.add(ms(Clock::now() - t0) - verify.v.back());
+                auto job = client.begin_refresh();
+                begin.add(ms(Clock::now() - t0));
+                t0 = Clock::now();
+                job.run();
+                check.add(ms(Clock::now() - t0) - verify.v.back());
+                t0 = Clock::now();
+                if (!client.finish_refresh(std::move(job))) return std::printf("refresh refused\n"), 2;
+                finish.add(ms(Clock::now() - t0));
+                if (moved) {  // the stack changes between staging and the boundary
+                    if (!cfg.push_layer("nudge", *nudge) || !cfg.remove_layer("nudge")) return 2;
+                }
                 t0 = Clock::now();
                 if (!client.apply()) return std::printf("apply refused\n"), 2;
                 apply.add(ms(Clock::now() - t0));
@@ -136,11 +145,11 @@ int main(int argc, char** argv) {
                 if (!client.refresh() || !client.apply()) return std::printf("withdraw failed\n"), 2;
                 remove.add(ms(Clock::now() - t0));
             }
-            std::printf("%-7s %-5s %-6s overlay %zu B, %d runs | verify %.3f ms | stage (check) %.3f ms (p90 %.3f) | "
-                        "apply %.3f ms (p90 %.3f) | withdraw %.3f ms | %s build\n",
-                        recheck == bl::Recheck::Always ? "recheck" : "once", mode == bl::ApplyMode::Path ? "path" : "tree", shapes ? "shapes" : "plain", size, runs,
-                        verify.median(), stage.median(), stage.p90(), apply.median(), apply.p90(), remove.median(),
-                        baker::kShipping ? "shipping" : "development");
+            std::printf("%-6s %-5s overlay %zu B, %d runs | verify %.3f | check (any thread) %.3f (p90 %.3f) | "
+                        "begin %.3f + finish %.3f | apply %.3f (p90 %.3f) | withdraw %.3f ms | %s build\n",
+                        shapes ? "shapes" : "plain", moved ? "moved" : "held", size, runs, verify.median(),
+                        check.median(), check.p90(), begin.median(), finish.median(), apply.median(), apply.p90(),
+                        remove.median(), baker::kShipping ? "shipping" : "development");
         }
     return 0;
 }

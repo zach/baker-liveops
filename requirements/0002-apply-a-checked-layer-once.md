@@ -1,5 +1,8 @@
 # 0002: Apply a layer that was checked, without checking it again
 
+**Status:** built in Baker at baker-dev `3ce0424`: `LayerOptions::checked` (D165). The
+client uses it; the workaround described under *Today* is gone.
+
 ## The need
 
 A host checks a layer when it arrives (`check_layer_text` under a `LayerPolicy`), and

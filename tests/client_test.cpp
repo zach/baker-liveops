@@ -6,6 +6,7 @@
 
 #include <cstdlib>
 #include <map>
+#include <thread>
 
 namespace {
 
@@ -19,16 +20,13 @@ struct Host {
     bl::Client client;
 
     Host(const fs::path& cdn, const fs::path& user, std::span<const bl::PublicKey> keys,
-         bl::ApplyMode mode = bl::ApplyMode::Path, const char* description = "tests/game/liveops.dta",
-         bl::Recheck recheck = bl::Recheck::Always)
+         const char* description = "tests/game/liveops.dta")
         : game(load(description)),
           policies(game.named()),
           transport(cdn),
           store(user),
           client(cfg, {.environment = "prod", .keys = keys, .policies = policies,
-                       .transport = &transport, .store = &store, .mode = mode,
-                       .recheck = recheck, .log = [this](std::string_view l) { log.emplace_back(l); }}) {
-        if (mode == bl::ApplyMode::Path) client.attach(cfg.session());
+                       .transport = &transport, .store = &store, .log = [this](std::string_view l) { log.emplace_back(l); }}) {
         std::string error;
         if (!bl::load_base(cfg, game, source_dir() / "tests/game", error)) std::printf("%s\n", error.c_str());
         cfg.freeze();  // the shipped build's boundary: only layers change from here
@@ -56,10 +54,10 @@ const FakePublisher::Item kDoubleXp{"double_xp", "1", overlay_text("double_xp.dt
 
 // A signed overlay is staged when it arrives and applies only at the host's boundary;
 // source() names it, its version, and its origin.
-void applies_at_boundary(bl::ApplyMode mode) {
+void applies_at_boundary() {
     const fs::path dir = scratch("apply");
     FakePublisher pub(dir / "cdn");
-    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1), mode);
+    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
     pub.publish({kBalance});
 
     CHECK(host.client.restore());
@@ -75,12 +73,12 @@ void applies_at_boundary(bl::ApplyMode mode) {
     CHECK(host.get<int64_t>("economy.gold_per_win") == 120);
     CHECK(host.get<double>("economy.shop_discount") == 0.1);
     auto s = host.cfg.source("economy.gold_per_win");
-    CHECK(s && s->layer.str() == "balance_2026_10");
-    CHECK(s && s->file.str().ends_with("liveops/balance_2026_10@3.dta"));  // name and version
-    if (mode == bl::ApplyMode::Path) CHECK(s && s->origin.str() == "ops/balance_2026_10.dta");
+    CHECK(s && s->layer.str() == "liveops/balance_2026_10@3.dta");  // its name and version
+    CHECK(s && s->file.str() == "liveops/balance_2026_10@3.dta");
+    CHECK(s && s->origin.str() == "ops/balance_2026_10.dta" && s->tool.str() == "baker-liveops");
     const auto live = host.client.live();
-    CHECK(live.size() == 1 && live[0].layer == "balance_2026_10" && live[0].version == "3");
-    if (mode == bl::ApplyMode::Path) CHECK(live.size() == 1 && live[0].origin == "ops/balance_2026_10.dta");
+    CHECK(live.size() == 1 && live[0].name == "balance_2026_10" && live[0].version == "3");
+    CHECK(live.size() == 1 && live[0].origin == "ops/balance_2026_10.dta");
 
     // A newer version replaces it at the next boundary.
     FakePublisher::Item v4 = kBalance;
@@ -94,7 +92,7 @@ void applies_at_boundary(bl::ApplyMode mode) {
     CHECK(host.get<int64_t>("economy.gold_per_win") == 130);
     CHECK(host.client.live().size() == 1 && host.client.live()[0].version == "4");
     s = host.cfg.source("economy.gold_per_win");
-    CHECK(s && s->layer.str() == "balance_2026_10" && s->file.str().ends_with("liveops/balance_2026_10@4.dta"));
+    CHECK(s && s->layer.str() == "liveops/balance_2026_10@4.dta");
     CHECK(!host.client.refresh());  // the same manifest again: nothing new
 
     // Withdrawn from the manifest: removed at the next boundary.
@@ -106,7 +104,7 @@ void applies_at_boundary(bl::ApplyMode mode) {
 }
 
 // Each of these is refused, and the Config is exactly as it was.
-void refusals(bl::ApplyMode mode) {
+void refusals() {
     struct Case {
         const char* what;
         const char* file;
@@ -123,7 +121,7 @@ void refusals(bl::ApplyMode mode) {
     for (const Case& c : cases) {
         const fs::path dir = scratch("refuse");
         FakePublisher pub(dir / "cdn");
-        Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1), mode);
+        Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
         const std::string before = root_text(host.cfg);
         const uint64_t epoch = host.cfg.epoch();
         const std::string text = overlay_text(c.file);
@@ -216,14 +214,14 @@ void verification() {
 }
 
 // Rollback restores every value and source(), and stays rolled back across a restart.
-void rollback(bl::ApplyMode mode) {
+void rollback() {
     const fs::path dir = scratch("rollback");
     FakePublisher pub(dir / "cdn");
     const char* paths[] = {"economy.gold_per_win", "economy.shop_discount", "events.xp_multiplier",
                            "events.drop_rate"};
     std::map<std::string, std::string> base;
     {
-        Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1), mode);
+        Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
         const std::string before = root_text(host.cfg);
         auto snapshot = [&] {
             std::map<std::string, std::string> out;
@@ -253,7 +251,7 @@ void rollback(bl::ApplyMode mode) {
         CHECK(!host.client.rollback("balance_2026_10"));
     }
     {   // After a restart, offline: the last good set without what was rolled back.
-        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1), mode);
+        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1));
         CHECK(host.client.restore());
         CHECK(host.client.apply());
         CHECK(host.client.live().empty());
@@ -263,16 +261,16 @@ void rollback(bl::ApplyMode mode) {
 
 // The last good overlays come back at start without the network; one that no longer passes
 // means starting on the base.
-void last_good(bl::ApplyMode mode) {
+void last_good() {
     const fs::path dir = scratch("lastgood");
     FakePublisher pub(dir / "cdn");
     {
-        Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1), mode);
+        Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
         pub.publish({kBalance, kDoubleXp});
         CHECK(host.client.refresh() && host.client.apply());
     }
     {   // Offline start: both come back.
-        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1), mode);
+        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1));
         CHECK(host.client.restore());
         CHECK(host.cfg.epoch() > 0 && !host.client.live().size());
         CHECK(host.client.apply());
@@ -282,50 +280,88 @@ void last_good(bl::ApplyMode mode) {
         CHECK(host.client.live().size() == 2);
     }
     {   // A build whose policy no longer allows the balance overlay starts without it.
-        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1), mode,
+        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1),
                   "tests/game/liveops_strict.dta");
         CHECK(host.client.restore() && host.client.apply());
         const auto live = host.client.live();
-        CHECK(live.size() == 1 && live[0].layer == "double_xp");
+        CHECK(live.size() == 1 && live[0].name == "double_xp");
         CHECK(host.get<int64_t>("economy.gold_per_win") == 100);
         CHECK(host.logged("refused balance_2026_10"));
     }
     {   // A stored overlay edited on disk is refused; the game starts on the base for it.
         bl::static_backend::write_file(dir / "user" / "overlay.double_xp", "(events (xp_multiplier 5))\n");
-        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1), mode);
+        Host host(dir / "nowhere", dir / "user", std::span(&pub.key.pub, 1));
         CHECK(host.client.restore() && host.client.apply());
         CHECK(host.get<double>("events.xp_multiplier") == 1);
         CHECK(host.logged("double_xp: "));
     }
 }
 
-// With Recheck::IfStackChanged, an overlay staged against the stack as it is applies
-// without a second check; one staged before the stack changed is checked again.
-void recheck_once() {
-    const fs::path dir = scratch("once");
+// The staged report carries to the push: the push takes its verdict when the stack has not
+// moved, and checks again when it has. Two overlays staged together: the second lands on a
+// stack the first changed, so it is checked again, and passes.
+void staged_reports() {
+    const fs::path dir = scratch("checked");
     FakePublisher pub(dir / "cdn");
-    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1), bl::ApplyMode::Path,
-              "tests/game/liveops.dta", bl::Recheck::IfStackChanged);
-    pub.publish({kBalance});
-    CHECK(host.client.refresh() && host.client.apply());
-    CHECK(host.get<int64_t>("economy.gold_per_win") == 120);
-    // Staged together: the second is pushed onto a stack the first changed, so it is
-    // checked again, and passes.
+    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
     pub.publish({kBalance, kDoubleXp});
     CHECK(host.client.refresh() && host.client.apply());
     CHECK(host.client.live().size() == 2 && host.get<double>("events.xp_multiplier") == 2);
+    CHECK(host.get<int64_t>("economy.gold_per_win") == 120);
+}
+
+// Fetching, verifying and checking on another thread, against a LayerChecker; staging and
+// applying on the Config's. A refresh overtaken by a newer one is dropped.
+void off_thread() {
+    const fs::path dir = scratch("thread");
+    FakePublisher pub(dir / "cdn");
+    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
+    pub.publish({kBalance});
+    auto job = host.client.begin_refresh();
+    std::thread worker([&] { job.run(); });
+    // The game goes on reading meanwhile.
+    for (int i = 0; i < 1000; ++i) CHECK(host.get<int64_t>("economy.gold_per_win") == 100);
+    worker.join();
+    CHECK(host.client.finish_refresh(std::move(job)));
+    CHECK(host.client.apply() && host.get<int64_t>("economy.gold_per_win") == 120);
+
+    auto older = host.client.begin_refresh();
+    pub.publish({kBalance, kDoubleXp});
+    auto newer = host.client.begin_refresh();
+    pub.publish({kDoubleXp});
+    older.run();
+    newer.run();
+    CHECK(host.client.finish_refresh(std::move(newer)));  // the last manifest: double_xp alone
+    CHECK(!host.client.finish_refresh(std::move(older)));
+    CHECK(host.logged("overtaken"));
+    CHECK(host.client.apply());
+    const auto live = host.client.live();
+    CHECK(live.size() == 1 && live[0].name == "double_xp");
+}
+
+// Received text reaches no file: an overlay that includes one is refused.
+void no_includes() {
+    const fs::path dir = scratch("include");
+    FakePublisher pub(dir / "cdn");
+    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
+    const std::string text = "(pack sneaky (level live) (version \"1\") (requires game_data))\n"
+                             "#include \"../../tests/game/data/default.dta\"\n(events (xp_multiplier 2))\n";
+    pub.publish({{"sneaky", "1", text, "events"}});
+    host.client.refresh();
+    CHECK(host.client.apply() && host.client.live().empty());
+    CHECK(host.logged("refused sneaky"));
 }
 
 }  // namespace
 
 int main() {
-    recheck_once();
-    for (bl::ApplyMode mode : {bl::ApplyMode::Path, bl::ApplyMode::Tree}) {
-        applies_at_boundary(mode);
-        refusals(mode);
-        rollback(mode);
-        last_good(mode);
-    }
+    applies_at_boundary();
+    refusals();
+    rollback();
+    last_good();
+    staged_reports();
+    off_thread();
+    no_includes();
     verification();
     std::printf("%s: %d failure(s) (%s build)\n", g_failures ? "FAIL" : "ok", g_failures,
                 baker::kShipping ? "shipping" : "development");

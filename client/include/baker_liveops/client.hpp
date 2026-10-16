@@ -4,7 +4,6 @@
 //
 //   baker_liveops::Client live(cfg, {.environment = "prod", .keys = keys,
 //                                    .policies = policies, .transport = &cdn, .store = &disk});
-//   live.attach(cfg.session());            // before the base loads (ApplyMode::Path)
 //   cfg.push_layer("default", "data/default.dta");
 //   cfg.freeze();                          // with ConfigOptions::live_layers
 //   live.restore();                        // stage the last good overlays, offline
@@ -15,10 +14,21 @@
 //   live.rollback("balance_2026_10");
 //
 // The order is fixed: an overlay's manifest is verified (Ed25519, a key the game trusts),
-// then its bytes (size, SHA-256), and only then does Baker read it, as text, checked with
-// Config::check_layer_text under the policy the manifest names. apply() pushes it with the
-// same policy. Nothing changes the Config but apply() and rollback(), and a refused overlay
-// changes nothing. Every call runs on the thread that owns the Config.
+// then its bytes (size, SHA-256), and only then does Baker read it, as received text (never
+// a cache), checked under the policy the manifest names. apply() pushes it with
+// Config::push_layer_text under the same policy and the staged report, so Baker checks again
+// only if the stack moved since. Nothing changes the Config but apply() and rollback(), and a
+// refused overlay changes nothing.
+//
+// Threads. Everything runs on the thread that owns the Config, except Refresh::run(), which
+// fetches, verifies, and checks against a LayerChecker on any thread:
+//
+//   auto job = live.begin_refresh();       // the Config's thread
+//   worker.post([&] { job.run(); });       // any thread: the transport is called here
+//   live.finish_refresh(std::move(job));   // the Config's thread again
+//
+// Such a check runs only the validators added with {.any_thread = true}; the push runs the
+// others first.
 
 #include <baker_liveops/manifest.hpp>
 
@@ -57,39 +67,13 @@ struct NamedPolicy {
     baker::LayerPolicy policy;
 };
 
-enum class ApplyMode {
-    // A file layer read through the Config's session, by a reader attach() installs: the
-    // overlay's pack (requires, version) and origin are read with it, so source() names
-    // its origin. Needs attach() before the base loads, and a Config without
-    // ConfigOptions::cache_dir: with one, Baker would cache the overlay and could later read
-    // the cache instead of the text (requirements/0001).
-    Path,
-    // A tree read from the text (text only) and pushed: source() names the layer and its
-    // file, without the origin. For a Config that loads through caches.
-    Tree,
-};
-
-// Whether apply() checks an overlay again as it pushes it.
-enum class Recheck {
-    // push_layer under the policy, always: the check runs at staging and again at apply.
-    Always,
-    // Under the policy only if the stack changed since the overlay was staged (another
-    // epoch); otherwise the staging check stands, and apply() costs the push alone. Only for
-    // a host that adds and removes no validators after its base loads, since that does not
-    // change the epoch. Baker has no way yet to push a layer it has already checked
-    // (requirements/0002).
-    IfStackChanged,
-};
-
 struct ClientOptions {
     std::string environment;
     std::span<const PublicKey> keys;
     std::span<const NamedPolicy> policies;
     Transport* transport = nullptr;
     Store* store = nullptr;
-    ApplyMode mode = ApplyMode::Path;
-    Recheck recheck = Recheck::Always;
-    // Overlays' file names, which source() reports: prefix + name + "@" + version + ".dta".
+    // Each overlay's layer, which source() names: prefix + name + "@" + version + ".dta".
     std::string prefix = "liveops/";
     uint64_t max_overlay_bytes = 4 << 20;
     std::function<void(std::string_view)> log;  // one line per event; default: none
@@ -97,11 +81,19 @@ struct ClientOptions {
 
 // What is live, as Baker reports it.
 struct LiveOverlay {
-    std::string layer;    // the overlay's name
-    std::string version;  // its pack's version
-    std::string file;     // the name it was read under: liveops/balance_2026_10@3.dta
-    std::string origin, tool;  // its (origin ...) declaration, in ApplyMode::Path
+    std::string name;     // the overlay's
+    std::string version;  // its pack's
+    std::string layer;    // its layer in the Config: liveops/balance_2026_10@3.dta
+    std::string origin, tool;  // its (origin ...) declaration
     std::string sha256;
+};
+
+// An overlay verified and checked, waiting for apply(), or live.
+struct Staged {
+    Entry entry;
+    std::string text;
+    baker::LayerReport report;  // its check, which the push reuses if it still holds
+    std::string origin, tool;   // filled when it goes live
 };
 
 class Client {
@@ -110,9 +102,27 @@ public:
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
 
-    // Installs the reader that serves verified overlays by name and everything else as
-    // `session`'s reader did. Call on cfg.session() before the first push_layer.
-    void attach(baker::LoadSession& session);
+    // A refresh in three steps, so that fetching, verifying and checking can leave the
+    // Config's thread. Movable; it holds copies of what it needs, and a LayerChecker.
+    class Refresh {
+    public:
+        void run();  // any thread
+
+    private:
+        friend class Client;
+        const ClientOptions* opt = nullptr;
+        baker::LayerChecker checker;
+        bool from_store = false;
+        uint64_t floor = 0;  // the sequence to beat
+        std::vector<std::string> known_manifests;
+        std::map<std::string, std::string, std::less<>> known_texts;  // by sha256
+        std::map<std::string, std::string, std::less<>> rolled_back;  // name -> sha256
+        std::string manifest;
+        uint64_t sequence = 0;
+        bool staged = false;  // a new manifest was verified
+        std::vector<Staged> overlays;
+        std::vector<std::string> log;
+    };
 
     // Stages the overlays applied last time, from the store, verified and checked again.
     // One that no longer passes is dropped: the game starts on the base without it.
@@ -120,6 +130,9 @@ public:
     // Fetches the manifest; if it is new, verifies and stages it. False if nothing was
     // staged (no change, or refused: the log says why), and what was staged stays.
     bool refresh();
+    [[nodiscard]] Refresh begin_refresh() const;
+    bool finish_refresh(Refresh&& job);
+
     // True when apply() would change the stack.
     [[nodiscard]] bool pending() const;
     // At the host's boundary: removes the live overlays the staged set drops or replaces,
@@ -135,29 +148,18 @@ public:
     [[nodiscard]] const baker::LayerReport* report(std::string_view name) const;
 
 private:
-    struct Overlay {
-        Entry entry;
-        std::string text;
-        baker::LayerReport report;
-        uint64_t epoch = 0;        // the Config's when it was checked
-        std::string origin, tool;  // filled when it goes live
-    };
-
     const baker::LayerPolicy* policy(std::string_view name) const;
-    std::string path(const Entry& e) const;
-    bool read(std::string_view path, baker::TextSink out) const;
+    std::string layer(const Entry& e) const;
     void note(std::string_view line) const;
-    std::optional<std::vector<Overlay>> stage(std::string_view manifest_text, bool from_store);
-    bool push(Overlay& o);
+    Refresh prepare(bool from_store) const;
+    bool push(Staged& o);
     void save() const;
-    bool rolled_back(const Entry& e) const;
 
     baker::Config& cfg_;
     ClientOptions opt_;
-    baker::LoadSession::Reader below_;
     uint64_t sequence_ = 0;  // of the newest manifest accepted
     std::string staged_manifest_, live_manifest_;
-    std::vector<Overlay> staged_, live_;
+    std::vector<Staged> staged_, live_;
     std::map<std::string, std::string, std::less<>> rolled_back_;  // name -> sha256
 };
 

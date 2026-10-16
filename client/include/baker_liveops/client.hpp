@@ -60,7 +60,9 @@ struct NamedPolicy {
 enum class ApplyMode {
     // A file layer read through the Config's session, by a reader attach() installs: the
     // overlay's pack (requires, version) and origin are read with it, so source() names
-    // its origin. Needs attach() before the base loads, and no ConfigOptions::cache_dir.
+    // its origin. Needs attach() before the base loads, and a Config without
+    // ConfigOptions::cache_dir: with one, Baker would cache the overlay and could later read
+    // the cache instead of the text (requirements/0001).
     Path,
     // A tree read from the text (text only) and pushed: source() names the layer and its
     // file, without the origin. For a Config that loads through caches.
@@ -72,8 +74,10 @@ enum class Recheck {
     // push_layer under the policy, always: the check runs at staging and again at apply.
     Always,
     // Under the policy only if the stack changed since the overlay was staged (another
-    // epoch); otherwise the staging check stands, and apply() costs the push alone. Baker
-    // has no way yet to push a layer it has already checked (requirements/0002).
+    // epoch); otherwise the staging check stands, and apply() costs the push alone. Only for
+    // a host that adds and removes no validators after its base loads, since that does not
+    // change the epoch. Baker has no way yet to push a layer it has already checked
+    // (requirements/0002).
     IfStackChanged,
 };
 

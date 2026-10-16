@@ -1,0 +1,97 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # The Baker this integration builds on (CMakeLists.txt pins the same commit).
+  BAKER_COMMIT: 75e1728216a9311d41a4b15c75c65c34d0a99646
+
+jobs:
+  # The client, the publisher and their tests, without the network, in development and
+  # shipping builds. The shipping job also prints the timings.
+  test:
+    name: test (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: development, shipping: "OFF" }
+          - { name: shipping, shipping: "ON" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsodium-dev
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBAKER_SHIPPING=${{ matrix.shipping }}
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Timings
+        if: matrix.shipping == 'ON'
+        run: build/tests/liveops_bench 300
+
+  # The scenario gate and retire through a stack: Ledger, built from baker-dev at the same
+  # commit, runs its scenarios headless.
+  ledger:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: zach/baker-dev
+          ref: ${{ env.BAKER_COMMIT }}
+          path: baker-dev
+      - name: Dependencies
+        run: >
+          sudo apt-get update && sudo apt-get install -y ninja-build libsodium-dev
+          libx11-dev libxext-dev libgl-dev libegl-dev
+      - name: Build Ledger
+        run: |
+          cmake -S baker-dev/stacks -B build-stacks -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTACKS_BUILD_TESTS=OFF
+          cmake --build build-stacks --target stacks_ledger
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_BAKER=$PWD/baker-dev
+          cmake --build build
+      - name: Test
+        env:
+          LIVEOPS_STACK_BIN: ${{ github.workspace }}/build-stacks/bin/stacks_ledger
+          LIVEOPS_LEDGER: ${{ github.workspace }}/baker-dev/stacks/ledger
+        run: python3 -I tests/test_cli.py build -v
+
+  # The Nakama backend against Nakama (Apache-2.0) in a container: the one job with a
+  # network service. The runtime's http_key is made for the run and masked.
+  nakama:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build libsodium-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Start Nakama
+        run: |
+          key=$(openssl rand -hex 16)
+          echo "::add-mask::$key"
+          echo "NAKAMA_HTTP_KEY=$key" >> "$GITHUB_ENV"
+          NAKAMA_HTTP_KEY=$key docker compose -f backends/nakama/docker-compose.yml up -d --wait
+      - name: Test
+        run: |
+          nk="python3 -I $PWD/backends/nakama/liveops_nakama.py --url http://127.0.0.1:7350"
+          LIVEOPS_NAKAMA_URL=http://127.0.0.1:7350 LIVEOPS_BACKEND="cmd:$nk" \
+            LIVEOPS_CLIENT_BACKEND="cmd:$nk --client" python3 -I tests/test_cli.py build -v
+      - name: Nakama's log
+        if: failure()
+        run: docker compose -f backends/nakama/docker-compose.yml logs nakama
+      - name: Stop Nakama
+        if: always()
+        run: docker compose -f backends/nakama/docker-compose.yml down -v

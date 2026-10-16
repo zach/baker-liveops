@@ -32,9 +32,7 @@ const baker::LayerPolicy* Client::policy(std::string_view name) const {
     return nullptr;
 }
 
-std::string Client::path(std::string_view name) const {
-    return opt_.prefix + std::string(name) + ".dta";
-}
+std::string Client::path(const Entry& e) const { return opt_.prefix + e.name + "@" + e.version + ".dta"; }
 
 void Client::attach(baker::LoadSession& session) {
     below_ = session.reader();
@@ -47,7 +45,7 @@ bool Client::read(std::string_view p, baker::TextSink out) const {
     if (p.starts_with(opt_.prefix)) {
         for (const auto* set : {&staged_, &live_})
             for (const Overlay& o : *set)
-                if (path(o.entry.name) == p) return out(o.text), true;
+                if (path(o.entry) == p) return out(o.text), true;
         return false;
     }
     if (below_) return below_(p, out);
@@ -105,7 +103,7 @@ std::optional<std::vector<Client::Overlay>> Client::stage(std::string_view text,
             continue;
         }
         // Verified: now Baker may read it, as text, under the policy.
-        auto report = cfg_.check_layer_text(path(e.name), *body, *p);
+        auto report = cfg_.check_layer_text(path(e), *body, *p);
         if (!report) {
             note("refused " + e.name + ": " + std::string(baker::to_string(report.error())));
             continue;
@@ -159,7 +157,7 @@ bool Client::pending() const {
 bool Client::push(Overlay& o) {
     const bool checked = opt_.recheck == Recheck::IfStackChanged && o.epoch == cfg_.epoch();
     const baker::LayerPolicy* p = checked ? nullptr : policy(o.entry.policy);
-    const std::string file = path(o.entry.name);
+    const std::string file = path(o.entry);
     const baker::LoadSession* read = &cfg_.read_session();
     baker::LoadSession session = cfg_.read_session();
     baker::Expected<void> r;
@@ -248,7 +246,7 @@ void Client::save() const {
 std::vector<LiveOverlay> Client::live() const {
     std::vector<LiveOverlay> out;
     for (const Overlay& o : live_)
-        out.push_back({o.entry.name, o.entry.version, path(o.entry.name), o.origin, o.tool, o.entry.sha256});
+        out.push_back({o.entry.name, o.entry.version, path(o.entry), o.origin, o.tool, o.entry.sha256});
     return out;
 }
 

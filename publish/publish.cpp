@@ -175,7 +175,8 @@ std::optional<Candidate> check_overlay(const baker::Config& base, const Game& ga
     c.entry.size = text.size();
     c.entry.policy = policy;
     if (p) {
-        auto report = base.check_layer_text(std::string(prefix) + c.entry.name + ".dta", text, p->policy);
+        auto report = base.check_layer_text(std::string(prefix) + c.entry.name + "@" + c.entry.version + ".dta", text,
+                                           p->policy);
         if (!report) {
             problems.emplace_back(baker::to_string(report.error()));
         } else {

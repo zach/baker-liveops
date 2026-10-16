@@ -76,7 +76,7 @@ void applies_at_boundary(bl::ApplyMode mode) {
     CHECK(host.get<double>("economy.shop_discount") == 0.1);
     auto s = host.cfg.source("economy.gold_per_win");
     CHECK(s && s->layer.str() == "balance_2026_10");
-    CHECK(s && s->file.str().ends_with("liveops/balance_2026_10.dta"));
+    CHECK(s && s->file.str().ends_with("liveops/balance_2026_10@3.dta"));  // name and version
     if (mode == bl::ApplyMode::Path) CHECK(s && s->origin.str() == "ops/balance_2026_10.dta");
     const auto live = host.client.live();
     CHECK(live.size() == 1 && live[0].layer == "balance_2026_10" && live[0].version == "3");
@@ -93,6 +93,8 @@ void applies_at_boundary(bl::ApplyMode mode) {
     CHECK(host.client.apply());
     CHECK(host.get<int64_t>("economy.gold_per_win") == 130);
     CHECK(host.client.live().size() == 1 && host.client.live()[0].version == "4");
+    s = host.cfg.source("economy.gold_per_win");
+    CHECK(s && s->layer.str() == "balance_2026_10" && s->file.str().ends_with("liveops/balance_2026_10@4.dta"));
     CHECK(!host.client.refresh());  // the same manifest again: nothing new
 
     // Withdrawn from the manifest: removed at the next boundary.

@@ -85,7 +85,8 @@ struct ClientOptions {
     Store* store = nullptr;
     ApplyMode mode = ApplyMode::Path;
     Recheck recheck = Recheck::Always;
-    std::string prefix = "liveops/";      // overlays' file names: prefix + name + ".dta"
+    // Overlays' file names, which source() reports: prefix + name + "@" + version + ".dta".
+    std::string prefix = "liveops/";
     uint64_t max_overlay_bytes = 4 << 20;
     std::function<void(std::string_view)> log;  // one line per event; default: none
 };
@@ -94,7 +95,7 @@ struct ClientOptions {
 struct LiveOverlay {
     std::string layer;    // the overlay's name
     std::string version;  // its pack's version
-    std::string file;     // the name it was read under
+    std::string file;     // the name it was read under: liveops/balance_2026_10@3.dta
     std::string origin, tool;  // its (origin ...) declaration, in ApplyMode::Path
     std::string sha256;
 };
@@ -139,7 +140,7 @@ private:
     };
 
     const baker::LayerPolicy* policy(std::string_view name) const;
-    std::string path(std::string_view name) const;
+    std::string path(const Entry& e) const;
     bool read(std::string_view path, baker::TextSink out) const;
     void note(std::string_view line) const;
     std::optional<std::vector<Overlay>> stage(std::string_view manifest_text, bool from_store);

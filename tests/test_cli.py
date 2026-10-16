@@ -4,7 +4,9 @@
 
 Optional: LIVEOPS_STACK_BIN (a baker-dev stacks_ledger binary) and LIVEOPS_LEDGER (its
 stacks/ledger directory) add the Ledger scenario gate and retire through the stack.
-LIVEOPS_BACKEND (cmd:...) runs the same flow through another backend, as the Nakama job does.
+LIVEOPS_BACKEND (cmd:...) runs the same flow through another backend, as the Nakama job does;
+LIVEOPS_CLIENT_BACKEND is then how the stand-in game reads it, and LIVEOPS_NAKAMA_URL adds
+the Nakama server's own checks.
 Keys are made fresh in a temporary directory and never printed.
 """
 
@@ -47,7 +49,8 @@ class Flow(unittest.TestCase):
                    "--policy", policy, "--backend", self.backend, "--env", self.env, "--key", self.key, *extra)
 
     def host(self, *extra, store="user"):
-        return run(HOST, "--game", GAME, "--base", BASE, "--backend", self.backend, "--env", self.env,
+        backend = os.environ.get("LIVEOPS_CLIENT_BACKEND") or self.backend
+        return run(HOST, "--game", GAME, "--base", BASE, "--backend", backend, "--env", self.env,
                    "--trust", self.pub, "--store", self.dir / store, *extra)
 
     def test_publish_apply_withdraw(self):
@@ -62,7 +65,7 @@ class Flow(unittest.TestCase):
         self.assertIn("live balance_2026_10 3 origin=ops/balance_2026_10.dta", h.stdout)
         self.assertIn("live double_xp 1 origin=ops/double_xp.dta", h.stdout)
         self.assertIn("value economy.gold_per_win = (gold_per_win 120) (layer balance_2026_10", h.stdout)
-        self.assertIn("origin ops/balance_2026_10.dta", h.stdout)
+        self.assertIn("liveops/balance_2026_10@3.dta:5, origin ops/balance_2026_10.dta", h.stdout)
 
         r = run(TOOL, "show", "--backend", self.backend, "--env", self.env, "--trust", self.pub)
         self.assertIn("sequence 2", r.stdout)
@@ -131,6 +134,29 @@ class Flow(unittest.TestCase):
         r = subprocess.run(["patch", "-p1", "-s", "-i", str(patch)], cwd=work, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("(gold_per_win 120)", (work / "data" / "default.dta").read_text())
+
+
+@unittest.skipUnless(os.environ.get("LIVEOPS_NAKAMA_URL"), "LIVEOPS_NAKAMA_URL names a Nakama server")
+class Nakama(unittest.TestCase):
+    """What the server enforces: clients read through the RPCs and cannot publish."""
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "backends" / "nakama"))
+        import liveops_nakama
+        self.nk = liveops_nakama
+        self.url = os.environ["LIVEOPS_NAKAMA_URL"]
+        self.token = liveops_nakama.session(self.url, os.environ.get("NAKAMA_SERVER_KEY", "defaultkey"))
+
+    def test_a_client_cannot_publish(self):
+        with self.assertRaises(self.nk.urllib.error.HTTPError) as e:
+            self.nk.call(self.url, "liveops_put", {"env": "prod", "key": "manifest", "body": "x"}, token=self.token)
+        self.assertIn(e.exception.code, (401, 403))
+
+    def test_only_liveops_keys_are_served(self):
+        for key in ("../manifest", "overlays/../../x.dta", "secrets"):
+            with self.assertRaises(self.nk.urllib.error.HTTPError) as e:
+                self.nk.call(self.url, "liveops_overlay", {"env": "prod", "key": key}, token=self.token)
+            self.assertEqual(e.exception.code, 400, key)
 
 
 @unittest.skipUnless(os.environ.get("LIVEOPS_STACK_BIN") and os.environ.get("LIVEOPS_LEDGER"),

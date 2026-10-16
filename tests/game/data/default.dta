@@ -1,0 +1,22 @@
+; The test game's shipped data. It is a pack at version 1.4, so an overlay can require it.
+(pack game_data (level game) (version "1.4"))
+
+(shapes
+   (economy
+      (gold_per_win int (range 0 10000))
+      (shop_discount float (range 0 0.9)))
+   (events
+      (xp_multiplier float (range 1 5))
+      (drop_rate float (range 0 1))
+      (banner string (optional))))
+
+(economy
+   (gold_per_win 100)
+   (shop_discount 0))
+
+(events
+   (xp_multiplier 1)
+   (drop_rate 0.05))
+
+(server
+   (tick_rate 30))

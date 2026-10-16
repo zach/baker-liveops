@@ -1,0 +1,13 @@
+; The test game's live-ops description: how it builds its Config, and what an overlay may
+; change. The publisher and the client read the same file.
+(liveops
+   (pack_levels game live)
+   (include_dirs data)
+   (layers (default data/default.dta))
+   (shapes 1)
+   (policies
+      ; Balance: numbers the game already has, in the economy and events only.
+      (hotfix (data_only 1) (scalars_only 1) (existing_only 1) (warnings_refuse 1)
+              (allow economy events))
+      ; Events may add a banner, but touch nothing outside events.
+      (events (data_only 1) (scalars_only 1) (warnings_refuse 1) (allow events))))

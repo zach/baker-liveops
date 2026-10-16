@@ -1,0 +1,4 @@
+(pack adds_command (level live) (version "1") (requires game_data))
+; Computes a value: a command, which no overlay may carry.
+(events
+   (xp_multiplier {+ 1 1}))

@@ -1,5 +1,5 @@
 # The publisher's parts, which the tests share; the command line only in development builds.
-add_library(baker_liveops_publishing game.cpp publish.cpp)
+add_library(baker_liveops_publishing game.cpp publish.cpp stack.cpp)
 add_library(liveops::publishing ALIAS baker_liveops_publishing)
 target_include_directories(baker_liveops_publishing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(baker_liveops_publishing

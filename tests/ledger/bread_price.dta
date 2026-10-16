@@ -1,0 +1,5 @@
+(pack bread_price (level task) (version "1") (requires ledger_core))
+(origin "ops/ledger/bread_price.dta" (tool baker-liveops))
+; Bread sells a little higher.
+(goods
+   (bread (base_price 44)))

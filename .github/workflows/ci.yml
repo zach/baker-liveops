@@ -8,8 +8,9 @@ permissions:
   contents: read
 
 env:
-  # The Baker this integration builds on (CMakeLists.txt pins the same commit).
-  BAKER_COMMIT: 3ce0424f9a0a5e996f0bd05dee75009298b969c6
+  # Ledger, the stack the scenario job runs, from baker-dev; the integration itself builds on
+  # the Baker release CMakeLists.txt names.
+  STACKS_COMMIT: 3ce0424f9a0a5e996f0bd05dee75009298b969c6
 
 jobs:
   # The client, the publisher and their tests, without the network, in development and
@@ -37,8 +38,8 @@ jobs:
         if: matrix.shipping == 'ON'
         run: build/tests/liveops_bench 300
 
-  # The scenario gate and retire through a stack: Ledger, built from baker-dev at the same
-  # commit, runs its scenarios headless.
+  # The scenario gate and retire through a stack: Ledger, built from baker-dev, runs its
+  # scenarios headless.
   ledger:
     runs-on: ubuntu-24.04
     steps:
@@ -46,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: zach/baker-dev
-          ref: ${{ env.BAKER_COMMIT }}
+          ref: ${{ env.STACKS_COMMIT }}
           path: baker-dev
       - name: Dependencies
         run: >
@@ -58,7 +59,7 @@ jobs:
           cmake --build build-stacks --target stacks_ledger
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_SOURCE_DIR_BAKER=$PWD/baker-dev
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
       - name: Test
         env:

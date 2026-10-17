@@ -8,16 +8,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(LIVEOPS_BUILD_TESTS "Build the tests" ${PROJECT_IS_TOP_LEVEL})
 option(LIVEOPS_BUILD_TOOLS "Build the publisher (needs a development build of Baker)" ${PROJECT_IS_TOP_LEVEL})
 
-# Baker, as a user takes it: its public headers, at a pinned commit until a release has
-# check_layer_text and LayerPolicy (D161). Offline: -DFETCHCONTENT_SOURCE_DIR_BAKER=path.
-# A shipping build: -DBAKER_SHIPPING=ON, which Baker reads.
+# Baker, as a user takes it: a released version, through its public headers.
+# Offline: -DFETCHCONTENT_SOURCE_DIR_BAKER=path. A shipping build: -DBAKER_SHIPPING=ON,
+# which Baker reads.
 include(FetchContent)
 set(BAKER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(BAKER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BAKER_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(baker
-  GIT_REPOSITORY https://github.com/zach/baker-dev.git
-  GIT_TAG 3ce0424f9a0a5e996f0bd05dee75009298b969c6)
+  GIT_REPOSITORY https://github.com/zach/baker.git
+  GIT_TAG v0.1.0
+  GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(baker)
 
 include(cmake/sodium.cmake)

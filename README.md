@@ -142,10 +142,10 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at baker-dev's main commit `3ce0424`, which has the layer
-check, the cookbook's "Published overlays", and received layers (D163–D167), until a release of `zach/baker` has it. To build offline, pass
-`-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker-dev`. In a shipping build, the client and its
-tests build, but the publisher does not, because `retire` needs a development build.
+Baker is fetched with FetchContent at its release `v0.1.0`, the first with the layer check
+and received layers. To build offline, pass `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
+In a shipping build, the client and its tests build, but the publisher does not, because
+`retire` needs a development build.
 
 The tests use no network. A directory stands in for storage, and the keys are made for
 each run. Optional runs:
@@ -156,21 +156,22 @@ each run. Optional runs:
 ## Measured
 
 `tests/bench.cpp` measures a 10 KB overlay that changes 256 values of a 2,000-item keyed table,
-under a policy with every rule on. The numbers are medians of 500 runs in a shipping build, on
-4 vCPUs of a 2.8 GHz Xeon, with GCC 13, at Baker `3ce0424`.
+under a policy with every rule on. The numbers are medians of 500 runs in a shipping build,
+with Baker 0.1.0 and GCC 13, on 4 vCPUs of a 2.1 GHz Xeon.
 
 | | verify | check (any thread) | apply, report holds | apply, stack moved |
 |---|---|---|---|---|
-| no validators | 0.08 ms | 0.48 ms | **0.18 ms** | **0.51 ms** |
-| `shape::validator` | 0.08 ms | 0.58 ms | **0.34 ms** | **0.88 ms** (p90 1.2 ms) |
+| no validators | 0.09 ms | 0.54 ms | **0.21 ms** | **0.60 ms** |
+| `shape::validator` | 0.09 ms | 0.69 ms | **0.40 ms** | **0.99 ms** (p90 1.1 ms) |
 
-- **Apply is the main thread's cost at the boundary**, and it is under 1 ms at the median in
-  every case. When the stack has not moved since staging, the push takes the staged
-  verdict. When it has, Baker checks again.
-- **The check runs on the worker.** Verifying and checking take about 0.6 ms off the main
-  thread. Taking the checker and staging take under 0.01 ms on it.
-- **Before Baker's received-layer work** (`75e1728`), the check alone was 1.1–1.4 ms on the
-  main thread. Applying under the policy was 1.3–1.9 ms, because it checked again.
+- **Apply is the main thread's cost at the boundary.** When the stack has not moved since
+  staging, the push takes the staged verdict: 0.2–0.4 ms. When it has, Baker checks again.
+  With shape validation that lands at 1 ms on this machine (0.88 ms on a 2.8 GHz one): the
+  case to avoid by staging close to the boundary.
+- **The check runs on the worker.** Verifying and checking take about 0.6–0.8 ms off the
+  main thread. Taking the checker and staging take under 0.01 ms on it.
+- **Before Baker's received-layer work**, the check alone was 1.1–1.4 ms on the main thread
+  (2.8 GHz). Applying under the policy was 1.3–1.9 ms, because it checked again.
 
 ## Requirements for Baker
 
@@ -178,7 +179,7 @@ When this integration needs something Baker lacks, write it down in `requirement
 `requirements/0000-template.md`, in Baker's own terms. Only the text of a requirement goes
 to Baker.
 
-All three are built in Baker (baker-dev `3ce0424`, D163–D167), and the client uses them:
+All three are in Baker 0.1.0 (baker-dev D163–D167), and the client uses them:
 
 - `0001` Push text a host received as a file layer, read as text only, with its pack and
   origin: `Config::push_layer_text`.

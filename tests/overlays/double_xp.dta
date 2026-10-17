@@ -1,0 +1,6 @@
+(pack double_xp (level live) (version "1") (requires game_data))
+(origin "ops/double_xp.dta" (tool baker-liveops))
+; Double-XP weekend.
+(events
+   (xp_multiplier 2)
+   (banner "Double XP all weekend!"))

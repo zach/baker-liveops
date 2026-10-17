@@ -1,0 +1,12 @@
+; The next build of the test game: its hotfix policy no longer reaches the economy.
+(liveops
+   (pack_levels game live)
+   (include_dirs data)
+   (layers (default data/default.dta))
+   (shapes 1)
+   (policies
+      ; Balance: now only events.
+      (hotfix (data_only 1) (scalars_only 1) (existing_only 1) (warnings_refuse 1)
+              (allow events))
+      ; Events may add a banner, but touch nothing outside events.
+      (events (data_only 1) (scalars_only 1) (warnings_refuse 1) (allow events))))

@@ -1,0 +1,6 @@
+(pack balance_2026_10 (level live) (version "3") (requires (game_data "1.4")))
+(origin "ops/balance_2026_10.dta" (tool baker-liveops))
+; Wins pay more, and the shop is a little cheaper.
+(economy
+   (gold_per_win 120)
+   (shop_discount 0.1))

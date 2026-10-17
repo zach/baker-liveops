@@ -1,0 +1,12 @@
+; Ledger (baker-dev's economy stack) as a live game: --base is stacks/ledger in a baker-dev
+; checkout. The stack builds its Config this way (base/src/live.cpp); its script check is
+; left to the scenarios, which run the game's own binary.
+(liveops
+   (pack_levels engine game task)
+   (include_dirs data)
+   (layers (default data/default.dta))
+   (shapes 1)
+   (policies
+      ; Balance: prices, demand, costs, and the economy's rules; nothing new, no script.
+      (balance (data_only 1) (scalars_only 1) (existing_only 1) (warnings_refuse 1)
+               (allow goods buildings econ))))

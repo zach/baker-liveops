@@ -181,7 +181,8 @@ class Ledger(unittest.TestCase):
         r = self.publish("cheap_tailor.dta")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("an objective that passes on the base breaks with it", r.stdout)
-        self.assertIn('"name": "ledger.pace_tailor", "moved": "broke"', r.stdout)
+        broke = [l for l in r.stdout.splitlines() if '"name": "ledger.pace_tailor"' in l]
+        self.assertTrue(broke and '"moved": "broke"' in broke[0], r.stdout)
         self.assertFalse((self.dir / "cdn" / "prod" / "manifest").exists())
 
     def test_an_overlay_that_keeps_them_is_published(self):

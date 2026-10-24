@@ -102,7 +102,8 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
 - **`check` and `publish`** run the client's own check against the base checkout, built as
   the game builds it. They refuse an overlay that declares no pack and version, names a
   policy the game lacks, or is refused by Baker.
-  - With `--stack`, a baker-dev stack runs its scenarios on a copy of its directories:
+  - With `--stack`, a baker-dev stack (one on Baker 0.6.0's host kit, whose flags begin
+    `--baker-`) runs its scenarios on a copy of its directories:
     first without the overlay, then with it as the agent layer. If `compare` reports an
     objective that passed before and breaks with it, the publish is refused.
   - Then it signs and uploads: the overlay first (named by its content), the manifest last.
@@ -113,9 +114,9 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
   temporary directory.
 - **`retire`** writes the overlay's effect into the base as a unified diff. It loads the
   base with the overlay as a layer and runs `Config::promote` with a writer that captures the
-  files, or it runs the stack's `promote --patch`. It writes nothing else and pushes nothing:
-  a person applies the patch on a branch, reviews it, merges it, and withdraws the overlay
-  once a build with it ships. If a value lives in a generated file (Ledger's `economy.dta`,
+  files, or it runs the stack's `promote --baker-patch`. It writes nothing else and pushes
+  nothing: a person applies the patch on a branch, reviews it, merges it, and withdraws the
+  overlay once a build with it ships. If a value lives in a generated file (Ledger's `economy.dta`,
   from `economy.xlsx`), it says to change the source instead.
 
 ## Backends
@@ -142,8 +143,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at its release `v0.1.0`, the first with the layer check
-and received layers. To build offline, pass `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
+Baker is fetched with FetchContent at its release `v0.6.0`. The layer check and received
+layers arrived in 0.1.0. To build offline, pass `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
 In a shipping build, the client and its tests build, but the publisher does not, because
 `retire` needs a development build.
 
@@ -170,6 +171,9 @@ with Baker 0.1.0 and GCC 13, on 4 vCPUs of a 2.1 GHz Xeon.
   case to avoid by staging close to the boundary.
 - **The check runs on the worker.** Verifying and checking take about 0.6–0.8 ms off the
   main thread. Taking the checker and staging take under 0.01 ms on it.
+- **Baker 0.6.0 measures the same as 0.1.0**, side by side on one host. Hosts differ more
+  than versions do: on a slower, shared 2.8 GHz container both gave 0.3 / 0.65 ms with the
+  report holding and 0.85 / 1.6 ms when the stack moved. Measure on the target hardware.
 - **Before Baker's received-layer work**, the check alone was 1.1–1.4 ms on the main thread
   (2.8 GHz). Applying under the policy was 1.3–1.9 ms, because it checked again.
 

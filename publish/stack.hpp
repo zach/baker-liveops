@@ -1,9 +1,9 @@
 #pragma once
 
-// A stack's scenarios as a gate (baker-dev's stacks: `sim --out DIR` and `compare BEFORE
-// AFTER`): the stack runs without the overlay and with it as its agent layer, in a copy of
-// its directories, and an objective that passed before and fails with it refuses the
-// publish.
+// A stack's scenarios as a gate (baker-dev's stacks, on Baker's host kit:
+// `sim --baker-results DIR` and `compare --baker-before A --baker-after B`): the stack runs
+// without the overlay and with it as its agent layer, in a copy of its directories, and an
+// objective that passed before and fails with it refuses the publish.
 
 #include <filesystem>
 #include <string>
@@ -14,8 +14,8 @@ namespace baker_liveops {
 [[nodiscard]] std::filesystem::path temp_dir(const std::string& name);
 // Runs a shell command; its output into `out` if given, else discarded. The exit code.
 int run(const std::string& command, std::string* out = nullptr);
-// Copies the stack around `data_dir` (it, and sim/, metrics/, packs/ beside it) into `into`,
-// without its local and agent layers. Returns the copy's data directory, or empty.
+// Copies the stack around `data_dir` (it, and sim/, metrics/, packs/ and baker-project.dta
+// beside it) into `into`, without its local and agent layers. Returns the copy's data directory, or empty.
 [[nodiscard]] std::filesystem::path copy_stack(const std::filesystem::path& data_dir,
                                                const std::filesystem::path& into);
 

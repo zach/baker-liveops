@@ -51,6 +51,9 @@ fs::path copy_stack(const fs::path& data_dir, const fs::path& into) {
     for (const fs::path dir : {name, fs::path("sim"), fs::path("metrics"), fs::path("packs")})
         if (fs::is_directory(parent / dir))
             fs::copy(parent / dir, into / dir, fs::copy_options::recursive, ec);
+    // The stack's own description of its Config (pack levels, include directories, layers).
+    if (fs::is_regular_file(parent / "baker-project.dta"))
+        fs::copy_file(parent / "baker-project.dta", into / "baker-project.dta", ec);
     if (ec) return {};
     fs::remove(into / name / "agent.dta", ec);
     fs::remove(into / name / "local.dta", ec);
@@ -64,13 +67,14 @@ ScenarioResult run_scenarios(const std::string& binary, const fs::path& data_dir
     const fs::path data = copy_stack(data_dir, scratch);
     if (data.empty()) return r.report = "cannot copy the stack from " + data_dir.string(), r;
     auto sim = [&](const char* out) {
-        return run("'" + binary + "' sim --data '" + data.string() + "' --out '" + (scratch / out).string() + "'");
+        return run("'" + binary + "' sim --data '" + data.string() + "' --baker-results '" +
+                   (scratch / out).string() + "'");
     };
     if (sim("before") > 1) return r.report = "the stack's scenarios do not run on the base", r;
     static_backend::write_file(data / "agent.dta", overlay_text);
     if (sim("after") > 1) return r.report = "the stack's scenarios do not run with the overlay", r;
-    const int code = run("'" + binary + "' compare '" + (scratch / "before").string() + "' '" +
-                             (scratch / "after").string() + "'",
+    const int code = run("'" + binary + "' compare --baker-before '" + (scratch / "before").string() +
+                             "' --baker-after '" + (scratch / "after").string() + "'",
                          &r.report);
     r.code = code == 0 ? 0 : code == 1 ? 1 : 2;
     fs::remove_all(scratch);

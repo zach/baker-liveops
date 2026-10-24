@@ -19,7 +19,7 @@ int retire_with_config(const Game& game, const std::filesystem::path& base,
                        const std::filesystem::path& overlay, const std::string& into,
                        std::string& patch, std::string& message);
 
-// Through a stack's own `promote --patch` (baker-dev's stacks): the overlay as its agent
+// Through a stack's own `promote --baker-patch` (baker-dev's stacks): the overlay as its agent
 // layer, in a copy of the stack's directories.
 int retire_with_stack(const std::string& binary, const std::filesystem::path& data_dir,
                       const std::string& overlay_text, const std::string& into, std::string& patch,

@@ -70,8 +70,8 @@ int retire_with_stack(const std::string& binary, const fs::path& data_dir, const
     static_backend::write_file(data / "agent.dta", overlay_text);
     const fs::path out = scratch / "retire.patch";
     std::string output;
-    const int code = run("'" + binary + "' promote --to " + into + " --data '" + data.string() + "' --patch '" +
-                             out.string() + "'",
+    const int code = run("'" + binary + "' promote --baker-to " + into + " --data '" + data.string() +
+                             "' --baker-patch '" + out.string() + "'",
                          &output);
     if (auto text = static_backend::read_file(out)) patch = *text;
     fs::remove_all(scratch);

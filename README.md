@@ -20,12 +20,12 @@ convention in Baker's cookbook, "Published overlays" (D162), on Baker's layer ch
 
 ## The convention
 
-**An overlay is a pack.** Its first form names it, its version, and the base it was made for;
-its second says where it came from, so `source()` names it:
+**An overlay is a pack.** Its `#pack` names it, its version, and the base it was made for;
+its `#origin` says where it came from, so `source()` names it:
 
 ```dta
-(pack balance_2026_10 (level live) (version "3") (requires (game_data "1.4")))
-(origin "ops/balance_2026_10.dta" (tool baker-liveops))
+#pack (balance_2026_10 (level live) (version "3") (requires (game_data "1.4")))
+#origin ("ops/balance_2026_10.dta" (tool baker-liveops))
 (economy
    (gold_per_win 120))
 ```
@@ -81,7 +81,10 @@ for (auto& o : live.live()) log(o.name, o.version, o.origin);
   report (`.checked`). If the Config has not changed since the check, Baker takes the
   report's verdict; otherwise it checks again and refuses what fails, changing nothing.
   - Each overlay's layer is `liveops/NAME@VERSION.dta`, so `source()` names the overlay and
-    its version, and the pack's `requires` and its `(origin ...)` are read with it.
+    its version, and the pack's `requires` and its `#origin` are read with it.
+- **Bound the names an overlay adds:** names live until the program ends, so each verified
+  overlay is read once under `ClientOptions::max_new_symbols` (16,384 by default) before
+  the check. Baker's received-text reads do not apply that cap yet (requirements/0005).
 - **Keep the last good:** after each apply, the set and its texts go to the `Store`. At start,
   `restore()` verifies and checks them again. One that no longer passes is dropped, and the
   game starts on the base without it.
@@ -102,8 +105,7 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
 - **`check` and `publish`** run the client's own check against the base checkout, built as
   the game builds it. They refuse an overlay that declares no pack and version, names a
   policy the game lacks, or is refused by Baker.
-  - With `--stack`, a baker-dev stack (one on Baker 0.6.0's host kit, whose flags begin
-    `--baker-`) runs its scenarios on a copy of its directories:
+  - With `--stack`, a baker-dev stack runs its scenarios on a copy of its directories:
     first without the overlay, then with it as the agent layer. If `compare` reports an
     objective that passed before and breaks with it, the publish is refused.
   - Then it signs and uploads: the overlay first (named by its content), the manifest last.
@@ -143,8 +145,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at its release `v0.6.0`. The layer check and received
-layers arrived in 0.1.0. To build offline, pass `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
+Baker is fetched with FetchContent at its release `v0.7.0`. To build offline, pass
+`-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
 In a shipping build, the client and its tests build, but the publisher does not, because
 `retire` needs a development build.
 
@@ -158,24 +160,22 @@ each run. Optional runs:
 
 `tests/bench.cpp` measures a 10 KB overlay that changes 256 values of a 2,000-item keyed table,
 under a policy with every rule on. The numbers are medians of 500 runs in a shipping build,
-with Baker 0.1.0 and GCC 13, on 4 vCPUs of a 2.1 GHz Xeon.
+with Baker 0.7.0 and GCC 13, on 4 vCPUs of a shared 2.8 GHz Xeon container.
 
 | | verify | check (any thread) | apply, report holds | apply, stack moved |
 |---|---|---|---|---|
-| no validators | 0.09 ms | 0.54 ms | **0.21 ms** | **0.60 ms** |
-| `shape::validator` | 0.09 ms | 0.69 ms | **0.40 ms** | **0.99 ms** (p90 1.1 ms) |
+| no validators | 0.10 ms | 0.70 ms | **0.23 ms** | **0.65 ms** |
+| `shape::validator` | 0.10 ms | 0.88 ms | **0.51 ms** | **1.19 ms** (p90 1.3 ms) |
 
 - **Apply is the main thread's cost at the boundary.** When the stack has not moved since
-  staging, the push takes the staged verdict: 0.2–0.4 ms. When it has, Baker checks again.
-  With shape validation that lands at 1 ms on this machine (0.88 ms on a 2.8 GHz one): the
-  case to avoid by staging close to the boundary.
-- **The check runs on the worker.** Verifying and checking take about 0.6–0.8 ms off the
-  main thread. Taking the checker and staging take under 0.01 ms on it.
-- **Baker 0.6.0 measures the same as 0.1.0**, side by side on one host. Hosts differ more
-  than versions do: on a slower, shared 2.8 GHz container both gave 0.3 / 0.65 ms with the
-  report holding and 0.85 / 1.6 ms when the stack moved. Measure on the target hardware.
-- **Before Baker's received-layer work**, the check alone was 1.1–1.4 ms on the main thread
-  (2.8 GHz). Applying under the policy was 1.3–1.9 ms, because it checked again.
+  staging, the push takes the staged verdict: 0.2–0.5 ms. When it has, Baker checks again,
+  and with shape validation that passes 1 ms here: the case to avoid by staging close to the
+  boundary.
+- **The check runs on the worker.** Verifying and checking take about 0.8–1.0 ms off the
+  main thread, including the client's capped read of the overlay (requirements/0005).
+  Taking the checker and staging take under 0.01 ms on it.
+- **Hosts differ.** The same Baker measured about 15% faster on a quieter machine; measure
+  on the target hardware.
 
 ## Requirements for Baker
 
@@ -183,12 +183,16 @@ When this integration needs something Baker lacks, write it down in `requirement
 `requirements/0000-template.md`, in Baker's own terms. Only the text of a requirement goes
 to Baker.
 
-All three are in Baker 0.1.0 (baker-dev D163–D167), and the client uses them:
-
-- `0001` Push text a host received as a file layer, read as text only, with its pack and
-  origin: `Config::push_layer_text`.
-- `0002` Apply a layer that was checked, without checking it again: `LayerOptions::checked`.
-- `0003` Check a candidate layer off the thread that owns the Config: `Config::checker()`.
+- **In Baker since 0.1.0** (baker-dev D163–D167), and the client uses them:
+  - `0001` Push text a host received as a file layer, read as text only, with its pack and
+    origin: `Config::push_layer_text`.
+  - `0002` Apply a layer that was checked, without checking it again:
+    `LayerOptions::checked`.
+  - `0003` Check a candidate layer off the thread that owns the Config: `Config::checker()`.
+- **Open, from Baker 0.7.0:**
+  - `0004` A layer's effect lists the values it changes, apart from what it declares.
+  - `0005` Cap the names a received layer may add, apart from the game's own data. The
+    client works around it.
 
 ## License
 

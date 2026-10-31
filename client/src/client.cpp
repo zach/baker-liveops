@@ -1,5 +1,7 @@
 #include <baker_liveops/client.hpp>
 
+#include <baker/parse.hpp>
+
 #include <algorithm>
 #include <charconv>
 #include <sstream>
@@ -42,6 +44,10 @@ Client::Refresh Client::prepare(bool from_store) const {
     Refresh job;
     job.opt = &opt_;
     job.checker = cfg_.checker();
+    job.names = cfg_.read_session();
+    job.names.text_only = true;
+    job.names.refuse_includes = true;
+    job.names.limits.max_new_symbols = opt_.max_new_symbols;
     job.from_store = from_store;
     job.floor = sequence_;
     job.known_manifests = {staged_manifest_, live_manifest_};
@@ -99,7 +105,17 @@ void Client::Refresh::run() {
             note("refused " + error);
             continue;
         }
-        // Verified: now Baker may read it, as received text, under the policy.
+        // Verified: now Baker may read it. First under the cap on new names, which the check
+        // does not apply (requirements/0005); the check then finds them interned.
+        {
+            baker::LoadSession capped = names;
+            capped.clear_autorun();
+            if (auto read = baker::read_string(*body, layer_of(*opt, e), capped); !read) {
+                note("refused " + e.name + ": " + std::string(baker::to_string(read.error())));
+                continue;
+            }
+        }
+        // Then as received text, under the policy.
         auto report = checker.check_text(layer_of(*opt, e), *body, *p);
         if (!report) {
             note("refused " + e.name + ": " + std::string(baker::to_string(report.error())));

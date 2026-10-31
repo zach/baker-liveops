@@ -66,7 +66,14 @@ void applies_at_boundary() {
     CHECK(host.client.pending());
     CHECK(host.cfg.epoch() == epoch);  // staged: nothing changed yet
     CHECK(host.get<int64_t>("economy.gold_per_win") == 100);
-    CHECK(host.client.report("balance_2026_10")->effect.size() == 2);
+    // The values it changes. Baker 0.7.0's report also lists the overlay's own #pack and
+    // #origin as entries (requirements/0004), so look for these two rather than count.
+    {
+        int found = 0;
+        for (const baker::LayerEffectEntry& e : host.client.report("balance_2026_10")->effect)
+            found += e.path.str() == "economy.gold_per_win" || e.path.str() == "economy.shop_discount";
+        CHECK(found == 2);
+    }
 
     CHECK(host.client.apply());  // the session boundary
     CHECK(!host.client.pending());
@@ -344,12 +351,27 @@ void no_includes() {
     const fs::path dir = scratch("include");
     FakePublisher pub(dir / "cdn");
     Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
-    const std::string text = "(pack sneaky (level live) (version \"1\") (requires game_data))\n"
+    const std::string text = "#pack (sneaky (level live) (version \"1\") (requires game_data))\n"
                              "#include \"../../tests/game/data/default.dta\"\n(events (xp_multiplier 2))\n";
     pub.publish({{"sneaky", "1", text, "events"}});
     host.client.refresh();
     CHECK(host.client.apply() && host.client.live().empty());
     CHECK(host.logged("refused sneaky"));
+}
+
+// An overlay may add only so many names to the program: past the cap it is refused, and
+// the program keeps no more of them than the cap.
+void name_cap() {
+    const fs::path dir = scratch("names");
+    FakePublisher pub(dir / "cdn");
+    Host host(dir / "cdn", dir / "user", std::span(&pub.key.pub, 1));
+    std::string text = "#pack (many_names (level live) (version \"1\") (requires game_data))\n(events\n";
+    for (int i = 0; i < 20000; ++i) text += "   (unseen_name_" + std::to_string(i) + " 1)\n";
+    text += ")\n";
+    pub.publish({{"many_names", "1", text, "events"}});
+    host.client.refresh();
+    CHECK(host.client.apply() && host.client.live().empty());
+    CHECK(host.logged("max_new_symbols"));
 }
 
 }  // namespace
@@ -362,6 +384,7 @@ int main() {
     staged_reports();
     off_thread();
     no_includes();
+    name_cap();
     verification();
     std::printf("%s: %d failure(s) (%s build)\n", g_failures ? "FAIL" : "ok", g_failures,
                 baker::kShipping ? "shipping" : "development");

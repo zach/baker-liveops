@@ -201,7 +201,7 @@ class Ledger(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         body = lambda p: p.read_text().split("\n", 2)[2]  # past the file names
         self.assertEqual(body(a), body(b))
-        self.assertIn("+   (recovery 0.3 (range 0.01 1)", body(a))
+        self.assertIn("+   (recovery 0.3 (@range 0.01 1)", body(a))
 
 
 if __name__ == "__main__":

@@ -156,7 +156,7 @@ std::optional<Candidate> check_overlay(const baker::Config& base, const Game& ga
     if (!pack || pack->version.str().empty()) {
         problems.emplace_back(
             "an overlay declares itself a pack with a version, first: "
-            "(pack NAME (level L) (version \"N\") (requires (base \"V\")))");
+            "#pack (NAME (level L) (version \"N\") (requires (base \"V\")))");
         return std::nullopt;
     }
     Candidate c;

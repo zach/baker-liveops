@@ -61,7 +61,7 @@ private:
 struct Candidate {
     Entry entry;  // name, version and requires from its pack; sha256, size, policy
     std::string text;
-    std::string origin;  // its (origin ...), if it declares one
+    std::string origin;  // its #origin, if it declares one
     baker::LayerReport report;
 };
 

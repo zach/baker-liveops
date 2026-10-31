@@ -20,15 +20,18 @@ convention in Baker's cookbook, "Published overlays" (D162), on Baker's layer ch
 
 ## The convention
 
-**An overlay is a pack.** Its first form names it, its version, and the base it was made for;
-its second says where it came from, so `source()` names it:
+**An overlay is a pack.** Its `#pack` names it, its version, and the base it was made for;
+its `#origin` says where it came from, so `source()` names it:
 
 ```dta
-(pack balance_2026_10 (level live) (version "3") (requires (game_data "1.4")))
-(origin "ops/balance_2026_10.dta" (tool baker-liveops))
+#pack (balance_2026_10 (level live) (version "3") (requires (game_data "1.4")))
+#origin ("ops/balance_2026_10.dta" (tool baker-liveops))
 (economy
    (gold_per_win 120))
 ```
+
+That is Baker 0.7.0's spelling. Overlays for game builds before 0.7.0 keep the old one,
+`(pack ...)` and `(origin ...)`; see [Games on Baker before 0.7.0](#games-on-baker-before-070).
 
 **The game declares its policies in data** that ships with it (`liveops.dta`), so the
 publisher checks an overlay exactly as the game will:
@@ -81,7 +84,10 @@ for (auto& o : live.live()) log(o.name, o.version, o.origin);
   report (`.checked`). If the Config has not changed since the check, Baker takes the
   report's verdict; otherwise it checks again and refuses what fails, changing nothing.
   - Each overlay's layer is `liveops/NAME@VERSION.dta`, so `source()` names the overlay and
-    its version, and the pack's `requires` and its `(origin ...)` are read with it.
+    its version, and the pack's `requires` and its `#origin` are read with it.
+- **Bound the names an overlay adds:** names live until the program ends, so each verified
+  overlay is read once under `ClientOptions::max_new_symbols` (16,384 by default) before
+  the check. Baker's received-text reads do not apply that cap yet (requirements/0005).
 - **Keep the last good:** after each apply, the set and its texts go to the `Store`. At start,
   `restore()` verifies and checks them again. One that no longer passes is dropped, and the
   game starts on the base without it.
@@ -135,6 +141,28 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
 - A commercial store (a platform's title storage, a flag service) is a backend in a
   separate, private repository.
 
+## Games on Baker before 0.7.0
+
+Baker 0.7.0 changed the spelling of declarations and metadata. A game on 0.7.0 reads
+`(pack ...)` as data and refuses the overlay, and a game on 0.6 does not read `#pack`. So
+one overlay cannot serve both, while players run builds of both.
+
+- **An environment per game build** for the transition: `prod` for builds on Baker 0.6, and
+  for example `prod-070` for builds on 0.7.0. Each build's client names its own
+  environment. The client and manifest need no change, and clients already shipped keep
+  reading theirs.
+  - Format tags in one manifest would not work: a shipped client refuses a manifest with a
+    field it does not know.
+- **The publisher checks with the Baker it links.** This one, on 0.7.0, checks and
+  publishes 0.7.0 overlays and refuses an old-form one with a hint. Publish to the 0.6
+  environment from a build of this repository at the commit before the upgrade
+  (`8c1cdd0`), against the 0.6 base checkout.
+- **Converting an overlay:** run Baker's `baker_migrate_metadata --write`, then
+  `baker_migrate_declarations --write`. In that order: run the other way, metadata inside a
+  `#shape` keeps its old spelling. Keep 0.7.0 overlays in prefix braces, `{+ 1 2}`, if an
+  older tool must read them.
+- **Retire the old environment** once no build before 0.7.0 is in players' hands.
+
 ## Building and testing
 
 ```sh
@@ -143,7 +171,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at its release `v0.6.0`. The layer check and received
+Baker is fetched with FetchContent at its release `v0.7.0`. The layer check and received
 layers arrived in 0.1.0. To build offline, pass `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
 In a shipping build, the client and its tests build, but the publisher does not, because
 `retire` needs a development build.
@@ -171,6 +199,12 @@ with Baker 0.1.0 and GCC 13, on 4 vCPUs of a 2.1 GHz Xeon.
   case to avoid by staging close to the boundary.
 - **The check runs on the worker.** Verifying and checking take about 0.6–0.8 ms off the
   main thread. Taking the checker and staging take under 0.01 ms on it.
+- **Baker 0.7.0, side by side with 0.6.0** on one 2.8 GHz host:
+  - **Apply without validators:** the same.
+  - **Apply with shape validation:** about 16% slower, 0.44 → 0.51 ms when the report holds
+    and 1.03 → 1.20 ms when the stack moved.
+  - **The check:** about 0.1 ms more, mostly the client's capped read of the overlay before
+    it (requirements/0005).
 - **Baker 0.6.0 measures the same as 0.1.0**, side by side on one host. Hosts differ more
   than versions do: on a slower, shared 2.8 GHz container both gave 0.3 / 0.65 ms with the
   report holding and 0.85 / 1.6 ms when the stack moved. Measure on the target hardware.
@@ -183,12 +217,16 @@ When this integration needs something Baker lacks, write it down in `requirement
 `requirements/0000-template.md`, in Baker's own terms. Only the text of a requirement goes
 to Baker.
 
-All three are in Baker 0.1.0 (baker-dev D163–D167), and the client uses them:
-
-- `0001` Push text a host received as a file layer, read as text only, with its pack and
-  origin: `Config::push_layer_text`.
-- `0002` Apply a layer that was checked, without checking it again: `LayerOptions::checked`.
-- `0003` Check a candidate layer off the thread that owns the Config: `Config::checker()`.
+- **In Baker since 0.1.0** (baker-dev D163–D167), and the client uses them:
+  - `0001` Push text a host received as a file layer, read as text only, with its pack and
+    origin: `Config::push_layer_text`.
+  - `0002` Apply a layer that was checked, without checking it again:
+    `LayerOptions::checked`.
+  - `0003` Check a candidate layer off the thread that owns the Config: `Config::checker()`.
+- **Open, from Baker 0.7.0:**
+  - `0004` A layer's effect lists the values it changes, apart from what it declares.
+  - `0005` Cap the names a received layer may add, apart from the game's own data. The
+    client works around it.
 
 ## License
 

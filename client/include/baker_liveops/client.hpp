@@ -76,6 +76,10 @@ struct ClientOptions {
     // Each overlay's layer, which source() names: prefix + name + "@" + version + ".dta".
     std::string prefix = "liveops/";
     uint64_t max_overlay_bytes = 4 << 20;
+    // The names one overlay may add to the program (symbols live until it ends). Baker's
+    // received-text reads do not apply a cap of their own yet (requirements/0005), so the
+    // client reads each verified overlay once under this one before the check.
+    uint64_t max_new_symbols = 16384;
     std::function<void(std::string_view)> log;  // one line per event; default: none
 };
 
@@ -84,7 +88,7 @@ struct LiveOverlay {
     std::string name;     // the overlay's
     std::string version;  // its pack's
     std::string layer;    // its layer in the Config: liveops/balance_2026_10@3.dta
-    std::string origin, tool;  // its (origin ...) declaration
+    std::string origin, tool;  // its #origin declaration
     std::string sha256;
 };
 
@@ -112,6 +116,7 @@ public:
         friend class Client;
         const ClientOptions* opt = nullptr;
         baker::LayerChecker checker;
+        baker::LoadSession names;  // the stack's session, text only, under max_new_symbols
         bool from_store = false;
         uint64_t floor = 0;  // the sequence to beat
         std::vector<std::string> known_manifests;

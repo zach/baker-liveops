@@ -1,5 +1,5 @@
-(pack slower_glut (level task) (version "1") (requires ledger_core))
-(origin "ops/ledger/slower_glut.dta" (tool baker-liveops))
+#pack (slower_glut (level task) (version "1") (requires ledger_core))
+#origin ("ops/ledger/slower_glut.dta" (tool baker-liveops))
 ; Markets clear their glut a little faster.
 (econ
    (recovery 0.3))

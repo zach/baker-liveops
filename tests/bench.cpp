@@ -44,9 +44,9 @@ public:
 };
 
 std::string base_text(int items) {
-    std::string s = "(pack game_data (level game) (version \"2.0\"))\n(shapes\n   (item (at items) (keyed)\n"
-                    "      (price int (range 0 100000))\n      (weight float (range 0 1000))\n"
-                    "      (stack int (range 1 999))\n      (rarity symbol)))\n(items\n";
+    std::string s = "#pack (game_data (level game) (version \"2.0\"))\n#shape (item (@at items) (@keyed)\n"
+                    "   (price int (@range 0 100000))\n   (weight float (@range 0 1000))\n"
+                    "   (stack int (@range 1 999))\n   (rarity symbol))\n(items\n";
     for (int i = 0; i < items; ++i) {
         char line[128];
         std::snprintf(line, sizeof line, "   (item_%04d (price %d) (weight %.1f) (stack %d) (rarity common))\n", i,
@@ -58,8 +58,8 @@ std::string base_text(int items) {
 
 // About `bytes` of changes to existing items' prices and weights.
 std::string overlay_text(size_t bytes, int version) {
-    std::string s = "(pack balance (level live) (version \"" + std::to_string(version) +
-                    "\") (requires (game_data \"2.0\")))\n(origin \"ops/balance.dta\" (tool baker-liveops))\n(items\n";
+    std::string s = "#pack (balance (level live) (version \"" + std::to_string(version) +
+                    "\") (requires (game_data \"2.0\")))\n#origin (\"ops/balance.dta\" (tool baker-liveops))\n(items\n";
     for (int i = 0; s.size() < bytes - 2; i += 7) {
         char line[96];
         std::snprintf(line, sizeof line, "   (item_%04d (price %d) (weight %.2f))\n", i % 2000, 11 + i % 400 + version,
@@ -89,7 +89,10 @@ int main(int argc, char** argv) {
             baker::Config cfg({.live_layers = true, .tweaks = nullptr});
             MemoryTransport transport;
             bl::Client client(cfg, {.environment = "prod", .keys = std::span(&key.pub, 1),
-                                    .policies = policies, .transport = &transport});
+                                    .policies = policies, .transport = &transport,
+                                    .log = [](std::string_view l) {
+                                        if (l.starts_with("refused")) std::printf("%.*s\n", int(l.size()), l.data());
+                                    }});
             cfg.session().set_pack_levels({"game", "live"});
             if (shapes) cfg.add_validator(baker::shape::validator(), {.any_thread = true});
             if (!cfg.push_layer("default", (dir / "default.dta").string())) return 2;
@@ -135,6 +138,7 @@ int main(int argc, char** argv) {
                 }
                 t0 = Clock::now();
                 if (!client.apply()) return std::printf("apply refused\n"), 2;
+                if (client.live().size() != 1) return std::printf("the overlay did not apply\n"), 2;
                 apply.add(ms(Clock::now() - t0));
 
                 // Back to the base for the next run, through a withdrawal.

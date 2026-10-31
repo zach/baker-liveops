@@ -1,4 +1,4 @@
-(pack outside_allow (level live) (version "1") (requires game_data))
+#pack (outside_allow (level live) (version "1") (requires game_data))
 ; The server's tick rate is not a balance value.
 (server
    (tick_rate 60))

@@ -164,7 +164,7 @@ std::optional<bl::Candidate> gate(const Args& a, const Base& base) {
                     c->origin.empty() ? "" : (", origin \"" + c->origin + "\"").c_str());
         std::printf("%s", bl::describe(c->report).c_str());
         if (c->origin.empty())
-            std::printf("  note: no (origin ...): source() will name the layer and file, not where it was made\n");
+            std::printf("  note: no #origin: source() will name the layer and file, not where it was made\n");
     }
     for (const std::string& p : problems) std::printf("  refused: %s\n", p.c_str());
     if (!c) return std::nullopt;

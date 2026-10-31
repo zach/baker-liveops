@@ -1,5 +1,5 @@
-(pack cheap_tailor (level task) (version "1") (requires ledger_core))
-(origin "ops/ledger/cheap_tailor.dta" (tool baker-liveops))
+#pack (cheap_tailor (level task) (version "1") (requires ledger_core))
+#origin ("ops/ledger/cheap_tailor.dta" (tool baker-liveops))
 ; A tailor for the price of a ranch: the top of the ladder arrives far too soon.
 (buildings
    (tailor (cost 500)))

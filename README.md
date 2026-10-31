@@ -30,9 +30,6 @@ its `#origin` says where it came from, so `source()` names it:
    (gold_per_win 120))
 ```
 
-That is Baker 0.7.0's spelling. Overlays for game builds before 0.7.0 keep the old one,
-`(pack ...)` and `(origin ...)`; see [Games on Baker before 0.7.0](#games-on-baker-before-070).
-
 **The game declares its policies in data** that ships with it (`liveops.dta`), so the
 publisher checks an overlay exactly as the game will:
 
@@ -108,8 +105,7 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
 - **`check` and `publish`** run the client's own check against the base checkout, built as
   the game builds it. They refuse an overlay that declares no pack and version, names a
   policy the game lacks, or is refused by Baker.
-  - With `--stack`, a baker-dev stack (one on Baker 0.6.0's host kit, whose flags begin
-    `--baker-`) runs its scenarios on a copy of its directories:
+  - With `--stack`, a baker-dev stack runs its scenarios on a copy of its directories:
     first without the overlay, then with it as the agent layer. If `compare` reports an
     objective that passed before and breaks with it, the publish is refused.
   - Then it signs and uploads: the overlay first (named by its content), the manifest last.
@@ -141,28 +137,6 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
 - A commercial store (a platform's title storage, a flag service) is a backend in a
   separate, private repository.
 
-## Games on Baker before 0.7.0
-
-Baker 0.7.0 changed the spelling of declarations and metadata. A game on 0.7.0 reads
-`(pack ...)` as data and refuses the overlay, and a game on 0.6 does not read `#pack`. So
-one overlay cannot serve both, while players run builds of both.
-
-- **An environment per game build** for the transition: `prod` for builds on Baker 0.6, and
-  for example `prod-070` for builds on 0.7.0. Each build's client names its own
-  environment. The client and manifest need no change, and clients already shipped keep
-  reading theirs.
-  - Format tags in one manifest would not work: a shipped client refuses a manifest with a
-    field it does not know.
-- **The publisher checks with the Baker it links.** This one, on 0.7.0, checks and
-  publishes 0.7.0 overlays and refuses an old-form one with a hint. Publish to the 0.6
-  environment from a build of this repository at the commit before the upgrade
-  (`8c1cdd0`), against the 0.6 base checkout.
-- **Converting an overlay:** run Baker's `baker_migrate_metadata --write`, then
-  `baker_migrate_declarations --write`. In that order: run the other way, metadata inside a
-  `#shape` keeps its old spelling. Keep 0.7.0 overlays in prefix braces, `{+ 1 2}`, if an
-  older tool must read them.
-- **Retire the old environment** once no build before 0.7.0 is in players' hands.
-
 ## Building and testing
 
 ```sh
@@ -171,8 +145,8 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at its release `v0.7.0`. The layer check and received
-layers arrived in 0.1.0. To build offline, pass `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
+Baker is fetched with FetchContent at its release `v0.7.0`. To build offline, pass
+`-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
 In a shipping build, the client and its tests build, but the publisher does not, because
 `retire` needs a development build.
 
@@ -186,30 +160,22 @@ each run. Optional runs:
 
 `tests/bench.cpp` measures a 10 KB overlay that changes 256 values of a 2,000-item keyed table,
 under a policy with every rule on. The numbers are medians of 500 runs in a shipping build,
-with Baker 0.1.0 and GCC 13, on 4 vCPUs of a 2.1 GHz Xeon.
+with Baker 0.7.0 and GCC 13, on 4 vCPUs of a shared 2.8 GHz Xeon container.
 
 | | verify | check (any thread) | apply, report holds | apply, stack moved |
 |---|---|---|---|---|
-| no validators | 0.09 ms | 0.54 ms | **0.21 ms** | **0.60 ms** |
-| `shape::validator` | 0.09 ms | 0.69 ms | **0.40 ms** | **0.99 ms** (p90 1.1 ms) |
+| no validators | 0.10 ms | 0.70 ms | **0.23 ms** | **0.65 ms** |
+| `shape::validator` | 0.10 ms | 0.88 ms | **0.51 ms** | **1.19 ms** (p90 1.3 ms) |
 
 - **Apply is the main thread's cost at the boundary.** When the stack has not moved since
-  staging, the push takes the staged verdict: 0.2–0.4 ms. When it has, Baker checks again.
-  With shape validation that lands at 1 ms on this machine (0.88 ms on a 2.8 GHz one): the
-  case to avoid by staging close to the boundary.
-- **The check runs on the worker.** Verifying and checking take about 0.6–0.8 ms off the
-  main thread. Taking the checker and staging take under 0.01 ms on it.
-- **Baker 0.7.0, side by side with 0.6.0** on one 2.8 GHz host:
-  - **Apply without validators:** the same.
-  - **Apply with shape validation:** about 16% slower, 0.44 → 0.51 ms when the report holds
-    and 1.03 → 1.20 ms when the stack moved.
-  - **The check:** about 0.1 ms more, mostly the client's capped read of the overlay before
-    it (requirements/0005).
-- **Baker 0.6.0 measures the same as 0.1.0**, side by side on one host. Hosts differ more
-  than versions do: on a slower, shared 2.8 GHz container both gave 0.3 / 0.65 ms with the
-  report holding and 0.85 / 1.6 ms when the stack moved. Measure on the target hardware.
-- **Before Baker's received-layer work**, the check alone was 1.1–1.4 ms on the main thread
-  (2.8 GHz). Applying under the policy was 1.3–1.9 ms, because it checked again.
+  staging, the push takes the staged verdict: 0.2–0.5 ms. When it has, Baker checks again,
+  and with shape validation that passes 1 ms here: the case to avoid by staging close to the
+  boundary.
+- **The check runs on the worker.** Verifying and checking take about 0.8–1.0 ms off the
+  main thread, including the client's capped read of the overlay (requirements/0005).
+  Taking the checker and staging take under 0.01 ms on it.
+- **Hosts differ.** The same Baker measured about 15% faster on a quieter machine; measure
+  on the target hardware.
 
 ## Requirements for Baker
 

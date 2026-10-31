@@ -1,5 +1,0 @@
-(pack old_form (level live) (version "1") (requires (game_data "1.4")))
-(origin "ops/old_form.dta" (tool baker-liveops))
-; Written for a game before Baker 0.7.0: its pack and origin are data to 0.7.0.
-(economy
-   (gold_per_win 110))

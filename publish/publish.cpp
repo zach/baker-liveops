@@ -214,7 +214,7 @@ std::string describe(const baker::LayerReport& report) {
     for (const baker::LayerEffectEntry& e : report.effect)
         s += "  " + std::string(e.path.str()) + ": " +
              (e.below ? baker::to_string(*e.below) : std::string("(none)")) + " -> " +
-             baker::to_string(e.value) + "\n";
+             baker::to_string(e.values) + "\n";
     for (const baker::Error& e : report.warnings) s += "  warning: " + std::string(baker::to_string(e)) + "\n";
     for (const baker::Error& e : report.refusals) s += "  refused: " + std::string(baker::to_string(e)) + "\n";
     return s;

@@ -10,7 +10,7 @@ permissions:
 env:
   # Ledger, the stack the scenario job runs, from baker-dev; the integration itself builds on
   # the Baker release CMakeLists.txt names.
-  STACKS_COMMIT: b5154466daeb1289d69f45b690f31d10c1ceb6e3
+  STACKS_COMMIT: 711db0097e3dc1737cf800985374629ff7203019
 
 jobs:
   # The client, the publisher and their tests, without the network, in development and

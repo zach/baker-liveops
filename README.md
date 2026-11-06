@@ -145,7 +145,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
 
-Baker is fetched with FetchContent at its release `v0.7.0`. To build offline, pass
+Baker is fetched with FetchContent at its release `v0.8.0`. To build offline, pass
 `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.
 In a shipping build, the client and its tests build, but the publisher does not, because
 `retire` needs a development build.
@@ -160,12 +160,12 @@ each run. Optional runs:
 
 `tests/bench.cpp` measures a 10 KB overlay that changes 256 values of a 2,000-item keyed table,
 under a policy with every rule on. The numbers are medians of 500 runs in a shipping build,
-with Baker 0.7.0 and GCC 13, on 4 vCPUs of a shared 2.8 GHz Xeon container.
+with Baker 0.8.0 and GCC 13, on 4 vCPUs of a shared 2.1 GHz Xeon container.
 
 | | verify | check (any thread) | apply, report holds | apply, stack moved |
 |---|---|---|---|---|
-| no validators | 0.10 ms | 0.70 ms | **0.23 ms** | **0.65 ms** |
-| `shape::validator` | 0.10 ms | 0.88 ms | **0.51 ms** | **1.19 ms** (p90 1.3 ms) |
+| no validators | 0.09 ms | 0.57 ms | **0.21 ms** | **0.59 ms** |
+| `shape::validator` | 0.10 ms | 0.87 ms | **0.51 ms** | **1.20 ms** (p90 1.25 ms) |
 
 - **Apply is the main thread's cost at the boundary.** When the stack has not moved since
   staging, the push takes the staged verdict: 0.2–0.5 ms. When it has, Baker checks again,
@@ -174,6 +174,9 @@ with Baker 0.7.0 and GCC 13, on 4 vCPUs of a shared 2.8 GHz Xeon container.
 - **The check runs on the worker.** Verifying and checking take about 0.8–1.0 ms off the
   main thread, including the client's capped read of the overlay (requirements/0005).
   Taking the checker and staging take under 0.01 ms on it.
+- **Against older Baker**, side by side on this host: with shape validation, an apply takes
+  about 16% longer than on 0.6.0 (0.44 → 0.52 ms when the report holds, 1.04 → 1.20 ms when
+  the stack moved) and 2–4% less than on 0.7.0; without validators it is unchanged.
 - **Hosts differ.** The same Baker measured about 15% faster on a quieter machine; measure
   on the target hardware.
 
@@ -189,7 +192,7 @@ to Baker.
   - `0002` Apply a layer that was checked, without checking it again:
     `LayerOptions::checked`.
   - `0003` Check a candidate layer off the thread that owns the Config: `Config::checker()`.
-- **Open, from Baker 0.7.0:**
+- **Open, from Baker 0.7.0, and still so in 0.8.0:**
   - `0004` A layer's effect lists the values it changes, apart from what it declares.
   - `0005` Cap the names a received layer may add, apart from the game's own data. The
     client works around it.

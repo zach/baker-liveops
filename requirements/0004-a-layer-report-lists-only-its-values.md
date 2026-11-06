@@ -1,5 +1,7 @@
 # 0004: A layer's effect lists the values it changes, apart from what it declares
 
+**Status:** open. Measured again at Baker 0.8.0 with the same result.
+
 ## The need
 
 A host that shows, logs or counts what a received layer will change needs the layer's

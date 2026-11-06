@@ -1,5 +1,7 @@
 # 0005: Cap the names a received layer may add, apart from the game's own data
 
+**Status:** open. Measured again at Baker 0.8.0 with the same result.
+
 ## The need
 
 A host that pushes text it received (`check_layer_text`, `push_layer_text`, a

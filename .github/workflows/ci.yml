@@ -25,7 +25,7 @@ jobs:
         build: [development, shipping]
         include:
           - { os: linux, runner: ubuntu-24.04 }
-          - { os: macos, runner: macos-14 }
+          - { os: macos, runner: macos-latest }
           - { os: windows, runner: windows-2022 }
           - { build: development, shipping: "OFF" }
           - { build: shipping, shipping: "ON" }

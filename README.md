@@ -140,10 +140,20 @@ baker-liveops retire --game G --base CHECKOUT --overlay F --patch retire.patch
 ## Building and testing
 
 ```sh
-sudo apt-get install libsodium-dev ninja-build      # or vcpkg / brew; -DSODIUM_ROOT=dir
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBAKER_SHIPPING=ON]
 cmake --build build && ctest --test-dir build
 ```
+
+It builds and is tested on Linux, macOS and Windows (MSVC), in development and shipping
+builds. libsodium comes from the system:
+
+| | libsodium |
+|---|---|
+| Linux | `apt-get install libsodium-dev` |
+| macOS | `brew install libsodium pkgconf` |
+| Windows | `vcpkg install libsodium:x64-windows`, configured with vcpkg's toolchain file |
+
+Elsewhere, `-DSODIUM_ROOT=dir` points at an install.
 
 Baker is fetched with FetchContent at its release `v0.8.0`. To build offline, pass
 `-DFETCHCONTENT_SOURCE_DIR_BAKER=path/to/baker`.

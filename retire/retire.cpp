@@ -1,6 +1,7 @@
 #include "retire.hpp"
 
 #include "../publish/stack.hpp"
+#include "diff.hpp"
 
 #include <static/static.hpp>
 
@@ -35,18 +36,12 @@ int retire_with_config(const Game& game, const fs::path& base, const fs::path& o
     for (const baker::Error& e : report->refused) message += "refused: " + std::string(baker::to_string(e)) + "\n";
     if (!report->ok()) return 1;
 
-    const fs::path scratch = temp_dir("retire");
     patch.clear();
     for (const auto& [path, text] : captured) {
-        const fs::path after = scratch / "after";
-        if (!static_backend::write_file(after, text)) return message = "cannot write " + after.string(), 2;
+        const auto before = static_backend::read_file(path);
+        if (!before) return message = "cannot read " + path, 2;
         const std::string rel = fs::relative(fs::path(path), base).generic_string();
-        std::string diff;
-        const int code = run("diff -u --label 'a/" + rel + "' --label 'b/" + rel + "' '" + path + "' '" +
-                                 after.string() + "'",
-                             &diff);
-        if (code > 1) return message = "diff failed on " + path, 2;
-        patch += diff;
+        patch += unified_diff(*before, text, rel);
         // A generated file is changed at its source: the patch shows the values to carry there.
         std::error_code ec;
         for (const baker::Origin& o : cfg.read_session().origins())
@@ -55,7 +50,6 @@ int retire_with_config(const Game& game, const fs::path& base, const fs::path& o
                            (o.tool.str().empty() ? "" : " by " + std::string(o.tool.str())) +
                            ": make the change there and generate it again; the patch shows the values\n";
     }
-    fs::remove_all(scratch);
     for (const baker::WrittenLine& w : report->written)
         message += "  " + fs::relative(fs::path(std::string(w.file.str())), base).generic_string() + ":" +
                    std::to_string(w.line) + "\n";
@@ -70,8 +64,8 @@ int retire_with_stack(const std::string& binary, const fs::path& data_dir, const
     static_backend::write_file(data / "agent.dta", overlay_text);
     const fs::path out = scratch / "retire.patch";
     std::string output;
-    const int code = run("'" + binary + "' promote --baker-to " + into + " --data '" + data.string() +
-                             "' --baker-patch '" + out.string() + "'",
+    const int code = run(quote(binary) + " promote --baker-to " + quote(into) + " --data " +
+                             quote(data.string()) + " --baker-patch " + quote(out.string()),
                          &output);
     if (auto text = static_backend::read_file(out)) patch = *text;
     fs::remove_all(scratch);

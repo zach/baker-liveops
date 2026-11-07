@@ -1,4 +1,5 @@
 #include "publish.hpp"
+#include "stack.hpp"
 
 #include <static/static.hpp>
 
@@ -13,7 +14,11 @@
 #if defined(_WIN32)
 #define popen _popen
 #define pclose _pclose
+#define READ_PIPE "rb"  // binary: text mode would turn \n into \r\n on the way
+#define WRITE_PIPE "wb"
 #else
+#define READ_PIPE "r"
+#define WRITE_PIPE "w"
 #include <sys/wait.h>
 #endif
 
@@ -83,7 +88,7 @@ public:
     explicit CommandBackend(std::string command) : command_(std::move(command)) {}
     std::optional<std::string> get(std::string_view key, bool& failed) override {
         failed = true;
-        std::FILE* p = popen((command_ + " get '" + std::string(key) + "'").c_str(), "r");
+        std::FILE* p = popen(line("get", key).c_str(), READ_PIPE);
         if (!p) return std::nullopt;
         std::string out;
         char buf[4096];
@@ -94,13 +99,21 @@ public:
         return out;
     }
     bool put(std::string_view key, std::string_view bytes) override {
-        std::FILE* p = popen((command_ + " put '" + std::string(key) + "'").c_str(), "w");
+        std::FILE* p = popen(line("put", key).c_str(), WRITE_PIPE);
         if (!p) return false;
         const bool wrote = std::fwrite(bytes.data(), 1, bytes.size(), p) == bytes.size();
         return exit_code(pclose(p)) == 0 && wrote;
     }
 
 private:
+    std::string line(const char* op, std::string_view key) const {
+        const std::string l = command_ + " " + op + " " + quote(key);
+#if defined(_WIN32)
+        return "\"" + l + "\"";  // cmd /c strips the outer quotes of a line that starts with one
+#else
+        return l;
+#endif
+    }
     std::string command_;
 };
 

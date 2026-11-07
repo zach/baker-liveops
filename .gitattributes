@@ -1,0 +1,3 @@
+# Text stays LF on every checkout, Windows included: overlays are hashed and patched byte
+# for byte.
+* text=auto eol=lf

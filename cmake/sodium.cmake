@@ -1,5 +1,13 @@
 # libsodium (ISC), for SHA-256 and Ed25519. From the system (libsodium-dev, vcpkg, brew),
 # found by pkg-config or by its header and library; -DSODIUM_ROOT=dir points elsewhere.
+# vcpkg's package first (Windows: vcpkg install libsodium), which carries its own defines.
+find_package(unofficial-sodium CONFIG QUIET)
+if(unofficial-sodium_FOUND)
+  add_library(liveops_sodium INTERFACE)
+  target_link_libraries(liveops_sodium INTERFACE unofficial-sodium::sodium)
+  add_library(liveops::sodium ALIAS liveops_sodium)
+  return()
+endif()
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
   pkg_check_modules(SODIUM QUIET IMPORTED_TARGET libsodium)

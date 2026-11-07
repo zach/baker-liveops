@@ -8,7 +8,9 @@
 #if defined(_WIN32)
 #define popen _popen
 #define pclose _pclose
+#define READ_PIPE "rb"
 #else
+#define READ_PIPE "r"
 #include <sys/wait.h>
 #endif
 
@@ -24,13 +26,26 @@ fs::path temp_dir(const std::string& name) {
     return p;
 }
 
+std::string quote(std::string_view arg) {
+#if defined(_WIN32)
+    std::string q = "\"";
+    for (char c : arg) q += c == '"' ? std::string("\\\"") : std::string(1, c);
+    return q + "\"";
+#else
+    std::string q = "'";
+    for (char c : arg) q += c == '\'' ? std::string("'\\''") : std::string(1, c);
+    return q + "'";
+#endif
+}
+
 int run(const std::string& command, std::string* out) {
 #if defined(_WIN32)
-    const char* quiet = " >NUL 2>&1";
+    // cmd /c strips the outer quotes of a line that starts with one: quote the whole line.
+    const std::string line = "\"" + command + (out ? " 2>&1" : " >NUL 2>&1") + "\"";
 #else
-    const char* quiet = " >/dev/null 2>&1";
+    const std::string line = command + (out ? " 2>&1" : " >/dev/null 2>&1");
 #endif
-    std::FILE* p = popen((command + (out ? " 2>&1" : quiet)).c_str(), "r");
+    std::FILE* p = popen(line.c_str(), READ_PIPE);
     if (!p) return -1;
     char buf[4096];
     for (size_t n; (n = std::fread(buf, 1, sizeof buf, p)) > 0;)
@@ -67,14 +82,14 @@ ScenarioResult run_scenarios(const std::string& binary, const fs::path& data_dir
     const fs::path data = copy_stack(data_dir, scratch);
     if (data.empty()) return r.report = "cannot copy the stack from " + data_dir.string(), r;
     auto sim = [&](const char* out) {
-        return run("'" + binary + "' sim --data '" + data.string() + "' --baker-results '" +
-                   (scratch / out).string() + "'");
+        return run(quote(binary) + " sim --data " + quote(data.string()) + " --baker-results " +
+                   quote((scratch / out).string()));
     };
     if (sim("before") > 1) return r.report = "the stack's scenarios do not run on the base", r;
     static_backend::write_file(data / "agent.dta", overlay_text);
     if (sim("after") > 1) return r.report = "the stack's scenarios do not run with the overlay", r;
-    const int code = run("'" + binary + "' compare --baker-before '" + (scratch / "before").string() +
-                             "' --baker-after '" + (scratch / "after").string() + "'",
+    const int code = run(quote(binary) + " compare --baker-before " + quote((scratch / "before").string()) +
+                             " --baker-after " + quote((scratch / "after").string()),
                          &r.report);
     r.code = code == 0 ? 0 : code == 1 ? 1 : 2;
     fs::remove_all(scratch);

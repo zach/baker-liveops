@@ -131,7 +131,7 @@ class Flow(unittest.TestCase):
                                    "+   (gold_per_win 120)", "+   (shop_discount 0.1))"])
         self.assertEqual((work / "data" / "default.dta").read_text(),
                          (pathlib.Path(BASE) / "data" / "default.dta").read_text())
-        r = subprocess.run(["patch", "-p1", "-s", "-i", str(patch)], cwd=work, capture_output=True, text=True)
+        r = subprocess.run(["git", "apply", "-p1", str(patch)], cwd=work, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("(gold_per_win 120)", (work / "data" / "default.dta").read_text())
 

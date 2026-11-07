@@ -7,11 +7,15 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace baker_liveops {
 
 // A new empty directory under the system's temporary directory.
 [[nodiscard]] std::filesystem::path temp_dir(const std::string& name);
+// An argument quoted for the shell run() and command backends use: sh's single quotes, or
+// cmd's double quotes on Windows.
+[[nodiscard]] std::string quote(std::string_view arg);
 // Runs a shell command; its output into `out` if given, else discarded. The exit code.
 int run(const std::string& command, std::string* out = nullptr);
 // Copies the stack around `data_dir` (it, and sim/, metrics/, packs/ and baker-project.dta
